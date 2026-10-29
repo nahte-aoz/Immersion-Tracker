@@ -3,12 +3,17 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { getTimerStatistics, recordTimerSession } from './db'
+import { getScreenPreview, startScreenOcr, stopScreenOcr } from './screenOcr'
+import type { ScreenRegion } from '../preload/types'
 
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1320,
+    height: 900,
+    minWidth: 850,
+    minHeight: 620,
+    center: true,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -116,11 +121,20 @@ const stopTimer = (): void => {
 };
 
 ipcMain.handle('timer:get', () => {
-  console.log(seconds);
   return seconds;
 })
 
 ipcMain.handle('stats:get', () => getTimerStatistics())
+ipcMain.handle('screen:preview', () => getScreenPreview())
+ipcMain.handle('screen:scan:start', (event, region: ScreenRegion) => {
+  const sender = event.sender
+  startScreenOcr(
+    region,
+    (result) => sender.send('screen:scan:result', result),
+    (message) => sender.send('screen:scan:error', message)
+  )
+})
+ipcMain.handle('screen:scan:stop', () => stopScreenOcr())
 
 ipcMain.handle('timer:start', startTimer)
 

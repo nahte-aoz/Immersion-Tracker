@@ -1,8 +1,9 @@
 import Timer from './components/Timer'
 import Statistics from './components/Statistics'
+import ScreenOcr from './components/ScreenOcr'
 import { useState } from 'react'
 
-type Tab = 'study' | 'statistics'
+type Tab = 'study' | 'statistics' | 'screen-ocr'
 
 function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('study')
@@ -37,11 +38,20 @@ function App(): React.JSX.Element {
           >
             Statistics
           </button>
+          <button
+            className={activeTab === 'screen-ocr' ? 'nav-tab is-active' : 'nav-tab'}
+            onClick={() => setActiveTab('screen-ocr')}
+            type="button"
+          >
+            Screen OCR
+          </button>
         </nav>
       </header>
 
-      <main className="main-content">
-        {activeTab === 'study' ? (
+      <main
+        className={activeTab === 'screen-ocr' ? 'main-content screen-ocr-content' : 'main-content'}
+      >
+        {activeTab === 'study' && (
           <section className="study-view" aria-labelledby="study-title">
             <h1 id="study-title">Study</h1>
             <div className="timer-panel">
@@ -68,9 +78,9 @@ function App(): React.JSX.Element {
               </div>
             </div>
           </section>
-        ) : (
-          <Statistics />
         )}
+        {activeTab === 'statistics' && <Statistics />}
+        <ScreenOcr active={activeTab === 'screen-ocr'} />
       </main>
     </div>
   )

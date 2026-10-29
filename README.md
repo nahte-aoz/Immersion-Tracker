@@ -32,3 +32,12 @@ $ npm run build:mac
 # For Linux
 $ npm run build:linux
 ```
+
+## Screen OCR Languages
+
+Set `IMMERSION_OCR_LANGUAGES` to a comma-separated list of Tesseract language model codes before launching. The default is `eng,jpn`.
+
+```powershell
+$env:IMMERSION_OCR_LANGUAGES = 'eng,jpn,rus'
+npm run dev
+```
