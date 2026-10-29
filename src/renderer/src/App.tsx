@@ -1,54 +1,78 @@
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
 import Timer from './components/Timer'
+import Statistics from './components/Statistics'
+import { useState } from 'react'
+
+type Tab = 'study' | 'statistics'
 
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('burger')
+  const [activeTab, setActiveTab] = useState<Tab>('study')
+  const [isRunning, setIsRunning] = useState(false)
 
-  const startTimer = (): void => window.electron.ipcRenderer.send('timer:start');
+  const startTimer = async (): Promise<void> => {
+    await window.api.startTimer()
+    setIsRunning(true)
+  }
 
-  const stopTimer = (): void => window.electron.ipcRenderer.send('timer:stop');
+  const stopTimer = async (): Promise<void> => {
+    await window.api.stopTimer()
+    setIsRunning(false)
+  }
 
   return (
-    <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
-      </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
-            Send Burger
-          </a>
-        </div>
-      </div>
-      <div>
-        <h3> Timer: <Timer></Timer> </h3>
-      </div>
-      <div className="actions">
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={startTimer}>
-            Start
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={stopTimer}>
-            Stop
-          </a>
-        </div>
-      </div>
-      <Versions></Versions>
-    </>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand"></div>
+        <nav className="primary-nav" aria-label="Main navigation">
+          <button
+            className={activeTab === 'study' ? 'nav-tab is-active' : 'nav-tab'}
+            onClick={() => setActiveTab('study')}
+            type="button"
+          >
+            Study
+          </button>
+          <button
+            className={activeTab === 'statistics' ? 'nav-tab is-active' : 'nav-tab'}
+            onClick={() => setActiveTab('statistics')}
+            type="button"
+          >
+            Statistics
+          </button>
+        </nav>
+      </header>
+
+      <main className="main-content">
+        {activeTab === 'study' ? (
+          <section className="study-view" aria-labelledby="study-title">
+            <h1 id="study-title">Study</h1>
+            <div className="timer-panel">
+              <div className="timer-reading">
+                <Timer />
+              </div>
+              <div className="timer-actions">
+                <button
+                  className="button button-primary"
+                  disabled={isRunning}
+                  onClick={() => void startTimer()}
+                  type="button"
+                >
+                  Start session
+                </button>
+                <button
+                  className="button button-secondary"
+                  disabled={!isRunning}
+                  onClick={() => void stopTimer()}
+                  type="button"
+                >
+                  Stop and save
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <Statistics />
+        )}
+      </main>
+    </div>
   )
 }
 

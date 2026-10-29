@@ -1,4 +1,5 @@
 export const schemaSQL = `CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timer INTEGER NOT NULL
+    timer INTEGER NOT NULL,
+    stopped_at TEXT
 )`;

@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { recordTimerSession } from './db'
+import { getTimerStatistics, recordTimerSession } from './db'
 
 function createWindow(): void {
   // Create the browser window.
@@ -36,17 +36,19 @@ function createWindow(): void {
   }
 }
 
-const callServer = async (): Promise<void> => {
-  try {
-    const res: Response = await fetch('http://localhost:3000/secret/a', { method: 'PUT' });
-    const text: string = await res.text();
-    console.log(text); // 'Successfully communicated with Express!'
-  } catch (err: unknown) {
-    console.error('Fetch failed:', err);
-  }
-};
-
-callServer();
+// Express call
+//
+// const callServer = async (): Promise<void> => {
+//   try {
+//     const res: Response = await fetch('http://localhost:3000/secret/a', { method: 'PUT' });
+//     const text: string = await res.text();
+//     console.log(text); // 'Successfully communicated with Express!'
+//   } catch (err: unknown) {
+//     console.error('Fetch failed:', err);
+//   }
+// };
+//
+// callServer();
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -88,10 +90,12 @@ app.on('window-all-closed', () => {
 
 let seconds = 0;
 let interval: NodeJS.Timeout | undefined;
+let sessionStartSeconds = 0
 
 const startTimer = (): void => {
   if (interval) return
 
+  sessionStartSeconds = seconds
   console.log("Timer started!")
   // Use setInterval to update the timer every 1000 milliseconds (1 second)
     interval = setInterval(() => {
@@ -107,7 +111,7 @@ const stopTimer = (): void => {
   if (interval) {
     clearInterval(interval);
     interval = undefined
-    recordTimerSession(seconds)
+    recordTimerSession(seconds - sessionStartSeconds)
   }
 };
 
@@ -115,6 +119,8 @@ ipcMain.handle('timer:get', () => {
   console.log(seconds);
   return seconds;
 })
+
+ipcMain.handle('stats:get', () => getTimerStatistics())
 
 ipcMain.handle('timer:start', startTimer)
 

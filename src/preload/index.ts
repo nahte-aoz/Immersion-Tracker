@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { TimerStatistics } from './types'
 
 // Custom APIs for renderer
 const api = {
   startTimer: (): Promise<void> => ipcRenderer.invoke('timer:start'),
   stopTimer: (): Promise<void> => ipcRenderer.invoke('timer:stop'),
   getSeconds: (): Promise<number> => ipcRenderer.invoke("timer:get"),
+  getTimerStatistics: (): Promise<TimerStatistics> => ipcRenderer.invoke('stats:get'),
   onTick: (cb: (s: number) => void) => {
     const listener = (_e: unknown, s: number): void => cb(s)
     ipcRenderer.on('timer:tick', listener)
