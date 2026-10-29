@@ -28,10 +28,18 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     const unsubscribeError = window.api.onScreenScanError((message) => {
       setError(message)
     })
+    const unsubscribeStopped = window.api.onScreenScanStopped(() => {
+      setIsScanning(false)
+    })
+    const unsubscribeStarted = window.api.onScreenScanStarted(() => {
+      setIsScanning(true)
+    })
     return () => {
       unsubscribeResult()
       unsubscribeResultLog()
       unsubscribeError()
+      unsubscribeStopped()
+      unsubscribeStarted()
     }
   }, [])
 
@@ -42,6 +50,7 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     setDraft(null)
     setIsSelecting(false)
     try {
+      await window.api.setScreenRegion(null)
       setPreview(await window.api.getScreenPreview())
       setIsSelecting(true)
     } catch {
@@ -86,7 +95,7 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     if (point) setDraft({ ...draft, current: point })
   }
 
-  const onPointerUp = (event: PointerEvent<HTMLImageElement>): void => {
+  const onPointerUp = async (event: PointerEvent<HTMLImageElement>): Promise<void> => {
     if (!draft || !preview) return
     const end = getPoint(event) ?? draft.current
     const nextRegion = {
@@ -98,15 +107,22 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     setDraft(null)
     if (nextRegion.width < 8 || nextRegion.height < 8) {
       setError('Select a larger area.')
+      setIsSelecting(true)
       return
     }
     if (nextRegion.width * nextRegion.height > preview.width * preview.height * 0.8) {
       setError('Select a smaller area around the text, not the full screen.')
+      setIsSelecting(true)
       return
     }
     setError('')
-    setRegion(nextRegion)
-    setIsSelecting(false)
+    try {
+      await window.api.setScreenRegion(nextRegion)
+      setRegion(nextRegion)
+      setIsSelecting(true)
+    } catch {
+      setError('Unable to save the selected screen area.')
+    }
   }
 
   const startScanning = async (): Promise<void> => {
@@ -199,7 +215,7 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
 
       {isScanning && (
         <p className="ocr-status" aria-live="polite">
-          Scanning live screen. Stop scanning to end.
+          Scanning live screen. New selected-language text starts study-time tracking.
         </p>
       )}
       {error && (

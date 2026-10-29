@@ -13,7 +13,8 @@ import type {
 const api = {
   startTimer: (): Promise<void> => ipcRenderer.invoke('timer:start'),
   stopTimer: (): Promise<void> => ipcRenderer.invoke('timer:stop'),
-  getSeconds: (): Promise<number> => ipcRenderer.invoke("timer:get"),
+  getSeconds: (): Promise<number> => ipcRenderer.invoke('timer:get'),
+  isTimerRunning: (): Promise<boolean> => ipcRenderer.invoke('timer:is-running'),
   getTimerStatistics: (): Promise<TimerStatistics> => ipcRenderer.invoke('stats:get'),
   getOcrLanguages: (): Promise<OcrLanguageCode[]> => ipcRenderer.invoke('ocr-languages:get'),
   getSupportedOcrLanguages: (): Promise<OcrLanguageOption[]> =>
@@ -21,6 +22,8 @@ const api = {
   setOcrLanguages: (languages: OcrLanguageCode[]): Promise<OcrLanguageCode[]> =>
     ipcRenderer.invoke('ocr-languages:set', languages),
   getScreenPreview: (): Promise<ScreenPreview> => ipcRenderer.invoke('screen:preview'),
+  setScreenRegion: (region: ScreenRegion | null): Promise<void> =>
+    ipcRenderer.invoke('screen:region:set', region),
   startScreenScan: (region: ScreenRegion): Promise<void> =>
     ipcRenderer.invoke('screen:scan:start', region),
   stopScreenScan: (): Promise<void> => ipcRenderer.invoke('screen:scan:stop'),
@@ -34,11 +37,26 @@ const api = {
     ipcRenderer.on('screen:scan:error', listener)
     return () => ipcRenderer.removeListener('screen:scan:error', listener)
   },
+  onScreenScanStopped: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('screen:scan:stopped', listener)
+    return () => ipcRenderer.removeListener('screen:scan:stopped', listener)
+  },
+  onScreenScanStarted: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('screen:scan:started', listener)
+    return () => ipcRenderer.removeListener('screen:scan:started', listener)
+  },
+  onTimerState: (callback: (isRunning: boolean) => void) => {
+    const listener = (_event: unknown, isRunning: boolean): void => callback(isRunning)
+    ipcRenderer.on('timer:state', listener)
+    return () => ipcRenderer.removeListener('timer:state', listener)
+  },
   onTick: (cb: (s: number) => void) => {
     const listener = (_e: unknown, s: number): void => cb(s)
     ipcRenderer.on('timer:tick', listener)
     return () => {
-     ipcRenderer.removeListener('timer:tick', listener)
+      ipcRenderer.removeListener('timer:tick', listener)
     }
   }
 }

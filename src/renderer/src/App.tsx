@@ -2,7 +2,7 @@ import Timer from './components/Timer'
 import Statistics from './components/Statistics'
 import ScreenOcr from './components/ScreenOcr'
 import Settings from './components/Settings'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Tab = 'study' | 'statistics' | 'screen-ocr' | 'settings'
 
@@ -10,14 +10,27 @@ function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('study')
   const [isRunning, setIsRunning] = useState(false)
 
+  useEffect(() => {
+    let receivedStateEvent = false
+    const unsubscribe = window.api.onTimerState((running) => {
+      receivedStateEvent = true
+      setIsRunning(running)
+    })
+    window.api
+      .isTimerRunning()
+      .then((running) => {
+        if (!receivedStateEvent) setIsRunning(running)
+      })
+      .catch((error: unknown) => console.error('Unable to get timer state:', error))
+    return unsubscribe
+  }, [])
+
   const startTimer = async (): Promise<void> => {
     await window.api.startTimer()
-    setIsRunning(true)
   }
 
   const stopTimer = async (): Promise<void> => {
     await window.api.stopTimer()
-    setIsRunning(false)
   }
 
   return (

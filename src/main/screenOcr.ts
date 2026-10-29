@@ -20,6 +20,11 @@ interface RecognizedBlock {
   letterCount: number
 }
 
+interface FrameRecognition {
+  result: ScreenOcrResult | null
+  hasTargetLanguageText: boolean
+}
+
 let workerPromise: ReturnType<typeof createWorker> | undefined
 let workerLanguageKey = ''
 let languageDetectorPromise: Promise<typeof import('franc-min')> | undefined
@@ -28,11 +33,13 @@ let lastOcrImageKey = ''
 let latestCapturedImageKey = ''
 let lastLoggedRegionKey = ''
 let lastLoggedWords = new Set<string>()
+let lastRecognizedTargetText = false
 let pendingFrame: CapturedFrame | undefined
 let isOcrRunning = false
 let activeScanId = 0
 let activeResultCallback: ((result: ScreenOcrResult) => void) | undefined
 let activeErrorCallback: ((message: string) => void) | undefined
+let activeActivityCallback: ((active: boolean) => void) | undefined
 let scanTimer: NodeJS.Timeout | undefined
 let isScanActive = false
 
@@ -140,7 +147,7 @@ const captureChangedRegion = async (region: ScreenRegion): Promise<CapturedFrame
 const recognizeFrame = async (
   frame: CapturedFrame,
   languages: string[]
-): Promise<ScreenOcrResult | null> => {
+): Promise<FrameRecognition> => {
   const worker = await getOcrWorker(languages)
   const { data } = await worker.recognize(frame.image, {}, { blocks: true })
   const recognizedBlocks: RecognizedBlock[] = (data.blocks ?? [])
@@ -180,7 +187,9 @@ const recognizeFrame = async (
     })
   }
 
-  if (recognizedBlocks.length === 0) return null
+  if (recognizedBlocks.length === 0) {
+    return { result: null, hasTargetLanguageText: false }
+  }
 
   languageDetectorPromise ??= import('franc-min')
   const { franc } = await languageDetectorPromise
@@ -217,26 +226,29 @@ const recognizeFrame = async (
   const confidence = Math.round(
     selectedBlocks.reduce((sum, block) => sum + block.confidence, 0) / selectedBlocks.length
   )
-  if (!text || confidence < 48) return null
+  if (!text || confidence < 48) {
+    return { result: null, hasTargetLanguageText: false }
+  }
 
   const result = { text, language, confidence }
-  const normalizedWords = new Set(
-    text
-      .toLocaleLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .split(/\s+/)
-      .filter(Boolean)
-  )
+  const normalizedText = text
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+  const hasTargetLanguageText = language !== 'und'
+  const normalizedWords = new Set(normalizedText.split(/\s+/).filter(Boolean))
   if (frame.regionKey === lastLoggedRegionKey && lastLoggedWords.size > 0) {
     const sharedWords = [...normalizedWords].filter((word) => lastLoggedWords.has(word)).length
     const unionSize = new Set([...normalizedWords, ...lastLoggedWords]).size
-    if (sharedWords / Math.max(1, unionSize) >= 0.75) return null
+    if (sharedWords / Math.max(1, unionSize) >= 0.75) {
+      return { result: null, hasTargetLanguageText }
+    }
   }
 
   lastLoggedRegionKey = frame.regionKey
   lastLoggedWords = normalizedWords
   console.info('[screen-ocr]', result)
-  return result
+  return { result, hasTargetLanguageText }
 }
 
 const recognizePendingFrames = async (scanId: number, languages: string[]): Promise<void> => {
@@ -247,10 +259,12 @@ const recognizePendingFrames = async (scanId: number, languages: string[]): Prom
     while (isScanActive && scanId === activeScanId && pendingFrame) {
       const frame = pendingFrame
       pendingFrame = undefined
-      const result = await recognizeFrame(frame, languages)
+      const recognition = await recognizeFrame(frame, languages)
       if (!isScanActive || scanId !== activeScanId) break
       if (frame.imageKey !== latestCapturedImageKey) continue
-      if (result) activeResultCallback?.(result)
+      lastRecognizedTargetText = recognition.hasTargetLanguageText
+      activeActivityCallback?.(lastRecognizedTargetText)
+      if (recognition.result) activeResultCallback?.(recognition.result)
     }
   } catch (error) {
     if (isScanActive && scanId === activeScanId) {
@@ -267,7 +281,8 @@ export const startScreenOcr = (
   region: ScreenRegion,
   languages: string[],
   onResult: (result: ScreenOcrResult) => void,
-  onError: (message: string) => void
+  onError: (message: string) => void,
+  onActivity: (active: boolean) => void
 ): void => {
   stopScreenOcr()
   const scanId = activeScanId
@@ -276,9 +291,11 @@ export const startScreenOcr = (
   latestCapturedImageKey = ''
   lastLoggedRegionKey = ''
   lastLoggedWords = new Set()
+  lastRecognizedTargetText = false
   pendingFrame = undefined
   activeResultCallback = onResult
   activeErrorCallback = onError
+  activeActivityCallback = onActivity
   isScanActive = true
   console.info('[screen-ocr] live scan started', region)
 
@@ -290,6 +307,8 @@ export const startScreenOcr = (
       if (frame && isScanActive && scanId === activeScanId) {
         pendingFrame = frame
         void recognizePendingFrames(scanId, languages)
+      } else if (lastRecognizedTargetText && isScanActive && scanId === activeScanId) {
+        activeActivityCallback?.(true)
       }
     } catch (error) {
       if (isScanActive && scanId === activeScanId) {
@@ -312,6 +331,8 @@ export const stopScreenOcr = (): void => {
   isScanActive = false
   activeScanId++
   pendingFrame = undefined
+  lastRecognizedTargetText = false
   if (scanTimer) clearTimeout(scanTimer)
   scanTimer = undefined
+  activeActivityCallback = undefined
 }

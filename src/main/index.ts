@@ -99,52 +99,150 @@ app.on('window-all-closed', () => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-let seconds = 0;
-let interval: NodeJS.Timeout | undefined;
+let seconds = 0
+let interval: NodeJS.Timeout | undefined
 let sessionStartSeconds = 0
+const activeTimerSources = new Set<'manual' | 'screen'>()
+let screenDetectionTimeout: NodeJS.Timeout | undefined
+const screenActivityGracePeriodMs = 10_000
+let selectedScreenRegion: ScreenRegion | null = null
+let isScreenScanRunning = false
 
-const startTimer = (): void => {
+const broadcastTimerState = (): void => {
+  const isRunning = Boolean(interval)
+  BrowserWindow.getAllWindows().forEach((window) =>
+    window.webContents.send('timer:state', isRunning)
+  )
+}
+
+const startTimerInterval = (): void => {
   if (interval) return
 
   sessionStartSeconds = seconds
-  console.log("Timer started!")
-  // Use setInterval to update the timer every 1000 milliseconds (1 second)
-    interval = setInterval(() => {
-      // Update the timer by incrementing the previous value by 1
-      seconds++;
-      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('timer:tick', seconds))
-    }, 1000)
-};
+  interval = setInterval(() => {
+    seconds++
+    BrowserWindow.getAllWindows().forEach((window) =>
+      window.webContents.send('timer:tick', seconds)
+    )
+  }, 1000)
+  broadcastTimerState()
+}
 
-// Function to pause the timer
-const stopTimer = (): void => {
-  // Clear the interval to stop the timer from updating
-  if (interval) {
-    clearInterval(interval);
-    interval = undefined
-    recordTimerSession(seconds - sessionStartSeconds)
+const stopTimerInterval = (): void => {
+  if (!interval || activeTimerSources.size > 0) return
+
+  clearInterval(interval)
+  interval = undefined
+  recordTimerSession(seconds - sessionStartSeconds)
+  broadcastTimerState()
+}
+
+const setTimerSource = (source: 'manual' | 'screen', active: boolean): void => {
+  if (active) {
+    if (activeTimerSources.has(source)) return
+    activeTimerSources.add(source)
+    startTimerInterval()
+    return
   }
-};
+
+  if (!activeTimerSources.delete(source)) return
+  stopTimerInterval()
+}
+
+const scheduleScreenDeactivation = (): void => {
+  screenDetectionTimeout = setTimeout(() => {
+    screenDetectionTimeout = undefined
+    setTimerSource('screen', false)
+  }, screenActivityGracePeriodMs)
+}
+
+const updateScreenDetection = (active: boolean): void => {
+  if (active) {
+    if (screenDetectionTimeout) clearTimeout(screenDetectionTimeout)
+    setTimerSource('screen', true)
+    scheduleScreenDeactivation()
+  } else if (activeTimerSources.has('screen') && !screenDetectionTimeout) {
+    scheduleScreenDeactivation()
+  }
+}
+
+const stopScreenDetection = (): void => {
+  if (screenDetectionTimeout) clearTimeout(screenDetectionTimeout)
+  screenDetectionTimeout = undefined
+  setTimerSource('screen', false)
+}
+
+const notifyScreenScanStopped = (): void => {
+  BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('screen:scan:stopped'))
+}
+
+const notifyScreenScanStarted = (): void => {
+  BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('screen:scan:started'))
+}
+
+const startScreenScan = (region: ScreenRegion): void => {
+  if (isScreenScanRunning) return
+
+  stopScreenDetection()
+  isScreenScanRunning = true
+  notifyScreenScanStarted()
+  startScreenOcr(
+    region,
+    getOcrLanguages(),
+    (result) => {
+      BrowserWindow.getAllWindows().forEach((window) =>
+        window.webContents.send('screen:scan:result', result)
+      )
+    },
+    (message) => {
+      stopScreenOcr()
+      isScreenScanRunning = false
+      stopScreenDetection()
+      BrowserWindow.getAllWindows().forEach((window) =>
+        window.webContents.send('screen:scan:error', message)
+      )
+      notifyScreenScanStopped()
+    },
+    updateScreenDetection
+  )
+}
+
+const stopScreenScan = (): void => {
+  stopScreenOcr()
+  isScreenScanRunning = false
+  stopScreenDetection()
+  notifyScreenScanStopped()
+}
+
+const startTimer = (): void => {
+  setTimerSource('manual', true)
+  if (selectedScreenRegion) startScreenScan(selectedScreenRegion)
+}
+
+const stopTimer = (): void => {
+  stopScreenScan()
+  activeTimerSources.clear()
+  stopTimerInterval()
+}
 
 ipcMain.handle('timer:get', () => {
-  return seconds;
+  return seconds
 })
+ipcMain.handle('timer:is-running', () => Boolean(interval))
 
 ipcMain.handle('stats:get', () => getTimerStatistics())
 ipcMain.handle('ocr-languages:get', () => getOcrLanguages())
 ipcMain.handle('ocr-languages:set', (_event, languages: string[]) => setOcrLanguages(languages))
 ipcMain.handle('ocr-languages:options', () => getSupportedOcrLanguages())
 ipcMain.handle('screen:preview', () => getScreenPreview())
-ipcMain.handle('screen:scan:start', (event, region: ScreenRegion) => {
-  const sender = event.sender
-  startScreenOcr(
-    region,
-    getOcrLanguages(),
-    (result) => sender.send('screen:scan:result', result),
-    (message) => sender.send('screen:scan:error', message)
-  )
+ipcMain.handle('screen:region:set', (_event, region: ScreenRegion | null) => {
+  selectedScreenRegion = region
 })
-ipcMain.handle('screen:scan:stop', () => stopScreenOcr())
+ipcMain.handle('screen:scan:start', (_event, region: ScreenRegion) => {
+  selectedScreenRegion = region
+  startScreenScan(region)
+})
+ipcMain.handle('screen:scan:stop', stopScreenScan)
 
 ipcMain.handle('timer:start', startTimer)
 
