@@ -980,3 +980,59 @@ h1 {
     padding-top: 18px;
   }
 }
+
+.settings-view {
+  width: min(100%, 620px);
+  margin: 0 auto;
+}
+
+.setting-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.setting-group legend {
+  margin-bottom: 10px;
+  color: #e4e4e4;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setting-list {
+  border-top: 1px solid #666869;
+}
+
+.setting-row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #666869;
+  color: #e2e2e2;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.setting-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0 0 0 4px;
+  accent-color: #9dc993;
+}
+
+.setting-group:disabled .setting-row {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.settings-message,
+.settings-error {
+  margin-top: 10px;
+  color: #c6c7c7;
+  font-size: 13px;
+}
+
+.settings-error {
+  color: #edaaa2;
+}

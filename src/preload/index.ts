@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { ScreenOcrResult, ScreenPreview, ScreenRegion, TimerStatistics } from './types'
+import type {
+  OcrLanguageCode,
+  OcrLanguageOption,
+  ScreenOcrResult,
+  ScreenPreview,
+  ScreenRegion,
+  TimerStatistics
+} from './types'
 
 // Custom APIs for renderer
 const api = {
@@ -8,6 +15,11 @@ const api = {
   stopTimer: (): Promise<void> => ipcRenderer.invoke('timer:stop'),
   getSeconds: (): Promise<number> => ipcRenderer.invoke("timer:get"),
   getTimerStatistics: (): Promise<TimerStatistics> => ipcRenderer.invoke('stats:get'),
+  getOcrLanguages: (): Promise<OcrLanguageCode[]> => ipcRenderer.invoke('ocr-languages:get'),
+  getSupportedOcrLanguages: (): Promise<OcrLanguageOption[]> =>
+    ipcRenderer.invoke('ocr-languages:options'),
+  setOcrLanguages: (languages: OcrLanguageCode[]): Promise<OcrLanguageCode[]> =>
+    ipcRenderer.invoke('ocr-languages:set', languages),
   getScreenPreview: (): Promise<ScreenPreview> => ipcRenderer.invoke('screen:preview'),
   startScreenScan: (region: ScreenRegion): Promise<void> =>
     ipcRenderer.invoke('screen:scan:start', region),

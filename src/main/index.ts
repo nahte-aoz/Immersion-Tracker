@@ -2,7 +2,13 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { getTimerStatistics, recordTimerSession } from './db'
+import {
+  getOcrLanguages,
+  getSupportedOcrLanguages,
+  getTimerStatistics,
+  recordTimerSession,
+  setOcrLanguages
+} from './db'
 import { getScreenPreview, startScreenOcr, stopScreenOcr } from './screenOcr'
 import type { ScreenRegion } from '../preload/types'
 
@@ -125,11 +131,15 @@ ipcMain.handle('timer:get', () => {
 })
 
 ipcMain.handle('stats:get', () => getTimerStatistics())
+ipcMain.handle('ocr-languages:get', () => getOcrLanguages())
+ipcMain.handle('ocr-languages:set', (_event, languages: string[]) => setOcrLanguages(languages))
+ipcMain.handle('ocr-languages:options', () => getSupportedOcrLanguages())
 ipcMain.handle('screen:preview', () => getScreenPreview())
 ipcMain.handle('screen:scan:start', (event, region: ScreenRegion) => {
   const sender = event.sender
   startScreenOcr(
     region,
+    getOcrLanguages(),
     (result) => sender.send('screen:scan:result', result),
     (message) => sender.send('screen:scan:error', message)
   )

@@ -26,3 +26,22 @@ export interface ScreenOcrResult {
   language: string
   confidence: number
 }
+
+export const OCR_LANGUAGE_OPTIONS = [
+  { code: 'eng', name: 'English' },
+  { code: 'jpn', name: 'Japanese' },
+  { code: 'chi_sim', name: 'Chinese (Simplified)' },
+  { code: 'chi_tra', name: 'Chinese (Traditional)' },
+  { code: 'kor', name: 'Korean' },
+  { code: 'rus', name: 'Russian' },
+  { code: 'spa', name: 'Spanish' },
+  { code: 'fra', name: 'French' },
+  { code: 'deu', name: 'German' },
+  { code: 'ita', name: 'Italian' },
+  { code: 'por', name: 'Portuguese' },
+  { code: 'ara', name: 'Arabic' },
+  { code: 'hin', name: 'Hindi' }
+] as const
+
+export type OcrLanguageCode = (typeof OCR_LANGUAGE_OPTIONS)[number]['code']
+export type OcrLanguageOption = (typeof OCR_LANGUAGE_OPTIONS)[number]

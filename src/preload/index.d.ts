@@ -1,11 +1,21 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { ScreenOcrResult, ScreenPreview, ScreenRegion, TimerStatistics } from './types'
+import type {
+  OcrLanguageCode,
+  OcrLanguageOption,
+  ScreenOcrResult,
+  ScreenPreview,
+  ScreenRegion,
+  TimerStatistics
+} from './types'
 
 export interface customAPI {
   startTimer: () => Promise<void>
   stopTimer: () => Promise<void>
   getSeconds: () => Promise<number>
   getTimerStatistics: () => Promise<TimerStatistics>
+  getOcrLanguages: () => Promise<OcrLanguageCode[]>
+  getSupportedOcrLanguages: () => Promise<OcrLanguageOption[]>
+  setOcrLanguages: (languages: OcrLanguageCode[]) => Promise<OcrLanguageCode[]>
   getScreenPreview: () => Promise<ScreenPreview>
   startScreenScan: (region: ScreenRegion) => Promise<void>
   stopScreenScan: () => Promise<void>

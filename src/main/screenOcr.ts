@@ -21,6 +21,7 @@ interface RecognizedBlock {
 }
 
 let workerPromise: ReturnType<typeof createWorker> | undefined
+let workerLanguageKey = ''
 let languageDetectorPromise: Promise<typeof import('franc-min')> | undefined
 let lastFrame: FrameSnapshot | undefined
 let lastOcrImageKey = ''
@@ -36,14 +37,24 @@ let scanTimer: NodeJS.Timeout | undefined
 let isScanActive = false
 
 const scanIntervalMs = 500
-const configuredLanguages = process.env['IMMERSION_OCR_LANGUAGES']
-  ?.split(',')
-  .map((language) => language.trim())
-  .filter(Boolean)
-const ocrLanguages = configuredLanguages?.length ? configuredLanguages : ['eng', 'jpn']
-const detectorLanguages = ocrLanguages.map((language) =>
-  language === 'chi_sim' || language === 'chi_tra' ? 'cmn' : language
-)
+
+const getOcrWorker = async (
+  languages: string[]
+): Promise<Awaited<ReturnType<typeof createWorker>>> => {
+  const languageKey = languages.join('+')
+  if (workerPromise && workerLanguageKey !== languageKey) {
+    const previousWorker = await workerPromise
+    await previousWorker.terminate()
+    workerPromise = undefined
+  }
+
+  workerLanguageKey = languageKey
+  workerPromise ??= createWorker(languages).then(async (worker) => {
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
+    return worker
+  })
+  return workerPromise
+}
 
 const hasMeaningfulChange = (regionKey: string, pixels: Buffer): boolean => {
   const previousFrame = lastFrame
@@ -126,12 +137,11 @@ const captureChangedRegion = async (region: ScreenRegion): Promise<CapturedFrame
   return { regionKey: frameKey, imageKey, image: recognitionImage.toPNG() }
 }
 
-const recognizeFrame = async (frame: CapturedFrame): Promise<ScreenOcrResult | null> => {
-  workerPromise ??= createWorker(ocrLanguages).then(async (worker) => {
-    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-    return worker
-  })
-  const worker = await workerPromise
+const recognizeFrame = async (
+  frame: CapturedFrame,
+  languages: string[]
+): Promise<ScreenOcrResult | null> => {
+  const worker = await getOcrWorker(languages)
   const { data } = await worker.recognize(frame.image, {}, { blocks: true })
   const recognizedBlocks: RecognizedBlock[] = (data.blocks ?? [])
     .map((block) => {
@@ -174,6 +184,9 @@ const recognizeFrame = async (frame: CapturedFrame): Promise<ScreenOcrResult | n
 
   languageDetectorPromise ??= import('franc-min')
   const { franc } = await languageDetectorPromise
+  const detectorLanguages = languages.map((language) =>
+    language === 'chi_sim' || language === 'chi_tra' ? 'cmn' : language
+  )
   const classifiedBlocks = recognizedBlocks.map((block) => ({
     ...block,
     language:
@@ -226,7 +239,7 @@ const recognizeFrame = async (frame: CapturedFrame): Promise<ScreenOcrResult | n
   return result
 }
 
-const recognizePendingFrames = async (scanId: number): Promise<void> => {
+const recognizePendingFrames = async (scanId: number, languages: string[]): Promise<void> => {
   if (isOcrRunning || !pendingFrame) return
   isOcrRunning = true
 
@@ -234,7 +247,7 @@ const recognizePendingFrames = async (scanId: number): Promise<void> => {
     while (isScanActive && scanId === activeScanId && pendingFrame) {
       const frame = pendingFrame
       pendingFrame = undefined
-      const result = await recognizeFrame(frame)
+      const result = await recognizeFrame(frame, languages)
       if (!isScanActive || scanId !== activeScanId) break
       if (frame.imageKey !== latestCapturedImageKey) continue
       if (result) activeResultCallback?.(result)
@@ -246,12 +259,13 @@ const recognizePendingFrames = async (scanId: number): Promise<void> => {
     }
   } finally {
     isOcrRunning = false
-    if (isScanActive && pendingFrame) void recognizePendingFrames(activeScanId)
+    if (isScanActive && pendingFrame) void recognizePendingFrames(activeScanId, languages)
   }
 }
 
 export const startScreenOcr = (
   region: ScreenRegion,
+  languages: string[],
   onResult: (result: ScreenOcrResult) => void,
   onError: (message: string) => void
 ): void => {
@@ -275,7 +289,7 @@ export const startScreenOcr = (
       const frame = await captureChangedRegion(region)
       if (frame && isScanActive && scanId === activeScanId) {
         pendingFrame = frame
-        void recognizePendingFrames(scanId)
+        void recognizePendingFrames(scanId, languages)
       }
     } catch (error) {
       if (isScanActive && scanId === activeScanId) {
