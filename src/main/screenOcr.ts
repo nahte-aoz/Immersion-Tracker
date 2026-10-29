@@ -10,7 +10,6 @@ interface FrameSnapshot {
 
 interface CapturedFrame {
   regionKey: string
-  imageKey: string
   image: Buffer
 }
 
@@ -22,18 +21,16 @@ interface RecognizedBlock {
 
 interface FrameRecognition {
   result: ScreenOcrResult | null
-  hasTargetLanguageText: boolean
+  targetTextKey: string
 }
 
 let workerPromise: ReturnType<typeof createWorker> | undefined
 let workerLanguageKey = ''
 let languageDetectorPromise: Promise<typeof import('franc-min')> | undefined
-let lastFrame: FrameSnapshot | undefined
+let lastMeaningfulFrame: FrameSnapshot | undefined
 let lastOcrImageKey = ''
-let latestCapturedImageKey = ''
 let lastLoggedRegionKey = ''
 let lastLoggedWords = new Set<string>()
-let lastRecognizedTargetText = false
 let pendingFrame: CapturedFrame | undefined
 let isOcrRunning = false
 let activeScanId = 0
@@ -64,14 +61,14 @@ const getOcrWorker = async (
 }
 
 const hasMeaningfulChange = (regionKey: string, pixels: Buffer): boolean => {
-  const previousFrame = lastFrame
-  lastFrame = { regionKey, pixels }
+  const previousFrame = lastMeaningfulFrame
 
   if (
     !previousFrame ||
     previousFrame.regionKey !== regionKey ||
     previousFrame.pixels.length !== pixels.length
   ) {
+    lastMeaningfulFrame = { regionKey, pixels }
     return true
   }
 
@@ -85,11 +82,13 @@ const hasMeaningfulChange = (regionKey: string, pixels: Buffer): boolean => {
       Math.abs(pixels[offset] - previousFrame.pixels[offset]) +
       Math.abs(pixels[offset + 1] - previousFrame.pixels[offset + 1]) +
       Math.abs(pixels[offset + 2] - previousFrame.pixels[offset + 2])
-    if (difference > 60) changedPixels++
+    if (difference > 45) changedPixels++
     samples++
   }
 
-  return changedPixels >= Math.max(30, Math.ceil(samples * 0.02))
+  const changedMeaningfully = changedPixels >= Math.max(8, Math.ceil(samples * 0.005))
+  if (changedMeaningfully) lastMeaningfulFrame = { regionKey, pixels }
+  return changedMeaningfully
 }
 
 const capturePrimaryScreen = async (): Promise<NativeImage> => {
@@ -131,7 +130,6 @@ const captureChangedRegion = async (region: ScreenRegion): Promise<CapturedFrame
   if (!hasMeaningfulChange(frameKey, pixels)) return null
 
   const imageKey = createHash('sha256').update(pixels).digest('hex')
-  latestCapturedImageKey = imageKey
   if (imageKey === lastOcrImageKey) return null
   lastOcrImageKey = imageKey
 
@@ -141,7 +139,7 @@ const captureChangedRegion = async (region: ScreenRegion): Promise<CapturedFrame
       ? croppedImage.resize({ width: width * scale, height: height * scale, quality: 'best' })
       : croppedImage
 
-  return { regionKey: frameKey, imageKey, image: recognitionImage.toPNG() }
+  return { regionKey: frameKey, image: recognitionImage.toPNG() }
 }
 
 const recognizeFrame = async (
@@ -188,7 +186,7 @@ const recognizeFrame = async (
   }
 
   if (recognizedBlocks.length === 0) {
-    return { result: null, hasTargetLanguageText: false }
+    return { result: null, targetTextKey: '' }
   }
 
   languageDetectorPromise ??= import('franc-min')
@@ -227,7 +225,7 @@ const recognizeFrame = async (
     selectedBlocks.reduce((sum, block) => sum + block.confidence, 0) / selectedBlocks.length
   )
   if (!text || confidence < 48) {
-    return { result: null, hasTargetLanguageText: false }
+    return { result: null, targetTextKey: '' }
   }
 
   const result = { text, language, confidence }
@@ -235,20 +233,20 @@ const recognizeFrame = async (
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
-  const hasTargetLanguageText = language !== 'und'
+  const targetTextKey = language === 'und' ? '' : `${language}:${normalizedText}`
   const normalizedWords = new Set(normalizedText.split(/\s+/).filter(Boolean))
   if (frame.regionKey === lastLoggedRegionKey && lastLoggedWords.size > 0) {
     const sharedWords = [...normalizedWords].filter((word) => lastLoggedWords.has(word)).length
     const unionSize = new Set([...normalizedWords, ...lastLoggedWords]).size
     if (sharedWords / Math.max(1, unionSize) >= 0.75) {
-      return { result: null, hasTargetLanguageText }
+      return { result: null, targetTextKey }
     }
   }
 
   lastLoggedRegionKey = frame.regionKey
   lastLoggedWords = normalizedWords
   console.info('[screen-ocr]', result)
-  return { result, hasTargetLanguageText }
+  return { result, targetTextKey }
 }
 
 const recognizePendingFrames = async (scanId: number, languages: string[]): Promise<void> => {
@@ -261,9 +259,7 @@ const recognizePendingFrames = async (scanId: number, languages: string[]): Prom
       pendingFrame = undefined
       const recognition = await recognizeFrame(frame, languages)
       if (!isScanActive || scanId !== activeScanId) break
-      if (frame.imageKey !== latestCapturedImageKey) continue
-      lastRecognizedTargetText = recognition.hasTargetLanguageText
-      activeActivityCallback?.(lastRecognizedTargetText)
+      activeActivityCallback?.(recognition.targetTextKey !== '')
       if (recognition.result) activeResultCallback?.(recognition.result)
     }
   } catch (error) {
@@ -286,12 +282,10 @@ export const startScreenOcr = (
 ): void => {
   stopScreenOcr()
   const scanId = activeScanId
-  lastFrame = undefined
+  lastMeaningfulFrame = undefined
   lastOcrImageKey = ''
-  latestCapturedImageKey = ''
   lastLoggedRegionKey = ''
   lastLoggedWords = new Set()
-  lastRecognizedTargetText = false
   pendingFrame = undefined
   activeResultCallback = onResult
   activeErrorCallback = onError
@@ -307,8 +301,6 @@ export const startScreenOcr = (
       if (frame && isScanActive && scanId === activeScanId) {
         pendingFrame = frame
         void recognizePendingFrames(scanId, languages)
-      } else if (lastRecognizedTargetText && isScanActive && scanId === activeScanId) {
-        activeActivityCallback?.(true)
       }
     } catch (error) {
       if (isScanActive && scanId === activeScanId) {
@@ -331,7 +323,6 @@ export const stopScreenOcr = (): void => {
   isScanActive = false
   activeScanId++
   pendingFrame = undefined
-  lastRecognizedTargetText = false
   if (scanTimer) clearTimeout(scanTimer)
   scanTimer = undefined
   activeActivityCallback = undefined

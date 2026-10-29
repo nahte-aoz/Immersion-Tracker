@@ -42,6 +42,6 @@ $env:IMMERSION_OCR_LANGUAGES = 'eng,jpn,rus'
 npm run dev
 ```
 
-While a live screen scan is running, recognized text in the selected OCR languages starts study-time tracking automatically. Matching text on a stable screen continues to count even when no new frame needs OCR; after the recognized text disappears, a 10-second grace period smooths brief OCR gaps. Manual and OCR tracking share one clock, so overlapping activity is not double-counted. The Study tab's timer buttons reflect automatic OCR tracking, and "Stop and save" ends the timer and the active OCR scan.
+While a live screen scan is running, recognized text in the selected OCR languages starts or renews study-time tracking, even when OCR recognizes the same wording again. A 20-second grace period absorbs slow OCR processing and brief missed frames; without another positive OCR result, tracking stops. Manual and OCR tracking share one clock, so overlapping activity is not double-counted. The Study tab's timer buttons reflect automatic OCR tracking, and "Stop and save" ends the timer and the active OCR scan.
 
 If a screen area has been selected, starting a manual timer also starts OCR scanning unless a scan is already running. Stopping the timer stops the scan but keeps the selected area available for the next start.

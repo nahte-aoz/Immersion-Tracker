@@ -3,7 +3,7 @@
 #### 1. **Step 4 Completion (Immersion Clock)**
 - ✅ **OCR Pipeline**: Core logic implemented (screenshot capture, change detection, Tesseract.js integration)
 - ⚠ **Language Detection**: Requires refinement (ensure `eld`/`franc` properly classify OCR output)
-- ✅ **Hysteresis Logic**: Recognized target-language text renews the 10-second grace period; stable matching frames keep activity alive without rerunning OCR.
+- ✅ **Hysteresis Logic**: Any positive OCR result renews the 20-second grace period, while lower-threshold cumulative frame comparison helps catch small and gradual text changes.
 
 #### 2. **Terminal Errors Analysis**
 - `npm run dev` failures (exit code 1) in root directory:

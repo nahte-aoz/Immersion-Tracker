@@ -104,7 +104,7 @@ let interval: NodeJS.Timeout | undefined
 let sessionStartSeconds = 0
 const activeTimerSources = new Set<'manual' | 'screen'>()
 let screenDetectionTimeout: NodeJS.Timeout | undefined
-const screenActivityGracePeriodMs = 10_000
+const screenActivityGracePeriodMs = 20_000
 let selectedScreenRegion: ScreenRegion | null = null
 let isScreenScanRunning = false
 
