@@ -1,13 +1,24 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  AudioAppList,
+  AudioSettings,
   OcrLanguageCode,
   OcrLanguageOption,
   ScreenOcrResult,
   ScreenPreview,
   ScreenRegion,
+  SpeechLanguageResult,
   TimerStatistics
 } from './types'
+
+const subscribe =
+  <Args extends unknown[]>(channel: string) =>
+  (callback: (...args: Args) => void): (() => void) => {
+    const listener = (_event: unknown, ...args: unknown[]): void => callback(...(args as Args))
+    ipcRenderer.on(channel, listener)
+    return () => ipcRenderer.removeListener(channel, listener)
+  }
 
 // Custom APIs for renderer
 const api = {
@@ -47,6 +58,23 @@ const api = {
     ipcRenderer.on('screen:scan:started', listener)
     return () => ipcRenderer.removeListener('screen:scan:started', listener)
   },
+  startAudioDetection: (): Promise<void> => ipcRenderer.invoke('audio:start'),
+  stopAudioDetection: (): Promise<void> => ipcRenderer.invoke('audio:stop'),
+  isAudioDetectionRunning: (): Promise<boolean> => ipcRenderer.invoke('audio:is-running'),
+  sendAudioFrames: (samples: Float32Array): void => ipcRenderer.send('audio:frames', samples),
+  reportAudioCaptureError: (message: string): void =>
+    ipcRenderer.send('audio:capture-error', message),
+  audioRendererReady: (): Promise<void> => ipcRenderer.invoke('audio:renderer-ready'),
+  getAudioSettings: (): Promise<AudioSettings> => ipcRenderer.invoke('audio:settings:get'),
+  setAudioSettings: (changes: Partial<AudioSettings>): Promise<AudioSettings> =>
+    ipcRenderer.invoke('audio:settings:set', changes),
+  listAudioApps: (): Promise<AudioAppList> => ipcRenderer.invoke('audio:apps:list'),
+  onAudioLevel: subscribe<[number]>('audio:level'),
+  onAudioCapture: subscribe<[boolean]>('audio:capture'),
+  onAudioResult: subscribe<[SpeechLanguageResult]>('audio:result'),
+  onAudioError: subscribe<[string]>('audio:error'),
+  onAudioStarted: subscribe<[]>('audio:started'),
+  onAudioStopped: subscribe<[]>('audio:stopped'),
   onTimerState: (callback: (isRunning: boolean) => void) => {
     const listener = (_event: unknown, isRunning: boolean): void => callback(isRunning)
     ipcRenderer.on('timer:state', listener)

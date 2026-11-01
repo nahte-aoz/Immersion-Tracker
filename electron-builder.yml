@@ -9,12 +9,23 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!resources/owocr/**'
+  - '!resources/speech/**'
+  - '!resources/audio-sessions/**'
+  - '!node_modules/loopback-capture/prebuilds/linux-x64/**'
+  - '!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**'
+  - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - node_modules/onnxruntime-node/bin/napi-v6/win32/x64/**
+  - node_modules/loopback-capture/prebuilds/win32-x64/**
 extraResources:
   - from: resources/owocr
     to: owocr
+  - from: resources/speech
+    to: speech
+  - from: resources/audio-sessions
+    to: audio-sessions
 win:
   executableName: immersion-tracker
 nsis:

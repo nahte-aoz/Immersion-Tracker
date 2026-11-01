@@ -2,7 +2,12 @@ import Database from "better-sqlite3";
 import { join } from 'path'
 import { app } from "electron";
 import { schemaSQL } from './schema'
-import { OCR_LANGUAGE_OPTIONS, type OcrLanguageCode } from '../../preload/types'
+import {
+	OCR_LANGUAGE_OPTIONS,
+	type AudioApp,
+	type AudioSettings,
+	type OcrLanguageCode
+} from '../../preload/types'
 
 const db = new Database(join(app.getPath('userData'), 'immersion-tracker.db'))
 db.exec(schemaSQL)
@@ -110,4 +115,45 @@ export const getTimerStatistics = (): TimerStatistics => {
 		.all() as TimerStatistics['recent']
 
 	return { ...summary, daily, calendar, recent }
+}
+
+const audioSettingsKeys = { alwaysListen: 'audio_always_listen', apps: 'audio_apps' }
+
+const readSetting = (key: string): string | undefined =>
+	(db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value
+
+const writeSetting = (key: string, value: string): void => {
+	db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value)
+}
+
+export const getAudioSettings = (): AudioSettings => {
+	let apps: AudioApp[] = []
+	try {
+		const saved = JSON.parse(readSetting(audioSettingsKeys.apps) ?? '[]') as unknown
+		if (Array.isArray(saved)) {
+			apps = saved.filter(
+				(app): app is AudioApp =>
+					typeof app?.exe === 'string' && app.exe !== '' && typeof app?.name === 'string'
+			)
+		}
+	} catch {
+		apps = []
+	}
+	return { alwaysListen: readSetting(audioSettingsKeys.alwaysListen) === 'true', apps }
+}
+
+export const setAudioSettings = (changes: Partial<AudioSettings>): AudioSettings => {
+	if (typeof changes.alwaysListen === 'boolean') {
+		writeSetting(audioSettingsKeys.alwaysListen, String(changes.alwaysListen))
+	}
+	if (Array.isArray(changes.apps)) {
+		const unique = new Map<string, AudioApp>()
+		for (const app of changes.apps) {
+			if (typeof app?.exe === 'string' && app.exe !== '') {
+				unique.set(app.exe.toLowerCase(), { exe: app.exe, name: String(app.name ?? app.exe) })
+			}
+		}
+		writeSetting(audioSettingsKeys.apps, JSON.stringify([...unique.values()]))
+	}
+	return getAudioSettings()
 }

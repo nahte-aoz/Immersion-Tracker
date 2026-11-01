@@ -1,10 +1,11 @@
 import Timer from './components/Timer'
 import Statistics from './components/Statistics'
 import ScreenOcr from './components/ScreenOcr'
+import AudioDetection from './components/AudioDetection'
 import Settings from './components/Settings'
 import { useEffect, useState } from 'react'
 
-type Tab = 'study' | 'statistics' | 'screen-ocr' | 'settings'
+type Tab = 'study' | 'statistics' | 'screen-ocr' | 'audio' | 'settings'
 
 function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('study')
@@ -60,6 +61,13 @@ function App(): React.JSX.Element {
             Screen OCR
           </button>
           <button
+            className={activeTab === 'audio' ? 'nav-tab is-active' : 'nav-tab'}
+            onClick={() => setActiveTab('audio')}
+            type="button"
+          >
+            Audio
+          </button>
+          <button
             className={activeTab === 'settings' ? 'nav-tab is-active' : 'nav-tab'}
             onClick={() => setActiveTab('settings')}
             type="button"
@@ -102,6 +110,7 @@ function App(): React.JSX.Element {
         )}
         {activeTab === 'statistics' && <Statistics />}
         <ScreenOcr active={activeTab === 'screen-ocr'} />
+        <AudioDetection active={activeTab === 'audio'} />
         {activeTab === 'settings' && <Settings />}
       </main>
     </div>

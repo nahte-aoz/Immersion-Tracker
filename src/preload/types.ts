@@ -45,3 +45,29 @@ export const OCR_LANGUAGE_OPTIONS = [
 
 export type OcrLanguageCode = (typeof OCR_LANGUAGE_OPTIONS)[number]['code']
 export type OcrLanguageOption = (typeof OCR_LANGUAGE_OPTIONS)[number]
+
+export interface SpeechLanguageResult {
+  language: string
+  confidence: number
+  isTarget: boolean
+}
+
+export interface AudioApp {
+  exe: string
+  name: string
+}
+
+export interface AudioSettings {
+  alwaysListen: boolean
+  apps: AudioApp[]
+}
+
+export interface AudioAppInfo extends AudioApp {
+  playing: boolean
+}
+
+export interface AudioAppList {
+  // False when Windows is too old for per-application audio capture.
+  supported: boolean
+  apps: AudioAppInfo[]
+}

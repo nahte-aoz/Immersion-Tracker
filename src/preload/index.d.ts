@@ -1,10 +1,13 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
+  AudioAppList,
+  AudioSettings,
   OcrLanguageCode,
   OcrLanguageOption,
   ScreenOcrResult,
   ScreenPreview,
   ScreenRegion,
+  SpeechLanguageResult,
   TimerStatistics
 } from './types'
 
@@ -25,6 +28,21 @@ export interface customAPI {
   onScreenScanError: (callback: (message: string) => void) => () => void
   onScreenScanStopped: (callback: () => void) => () => void
   onScreenScanStarted: (callback: () => void) => () => void
+  startAudioDetection: () => Promise<void>
+  stopAudioDetection: () => Promise<void>
+  isAudioDetectionRunning: () => Promise<boolean>
+  sendAudioFrames: (samples: Float32Array) => void
+  reportAudioCaptureError: (message: string) => void
+  audioRendererReady: () => Promise<void>
+  getAudioSettings: () => Promise<AudioSettings>
+  setAudioSettings: (changes: Partial<AudioSettings>) => Promise<AudioSettings>
+  listAudioApps: () => Promise<AudioAppList>
+  onAudioLevel: (callback: (rms: number) => void) => () => void
+  onAudioCapture: (callback: (capturing: boolean) => void) => () => void
+  onAudioResult: (callback: (result: SpeechLanguageResult) => void) => () => void
+  onAudioError: (callback: (message: string) => void) => () => void
+  onAudioStarted: (callback: () => void) => () => void
+  onAudioStopped: (callback: () => void) => () => void
   onTimerState: (callback: (isRunning: boolean) => void) => () => void
   onTick: (cb: (s: number) => void) => () => void
 }
