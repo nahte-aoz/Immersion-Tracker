@@ -76,7 +76,8 @@ export const getTimerStatistics = (): TimerStatistics => {
 		)
 		.get() as Omit<TimerStatistics, 'daily' | 'recent'>
 
-	const dailyRows = db
+	// Every day with a finished session, across all years, so the renderer can page through them.
+	const calendar = db
 		.prepare(
 			`SELECT
 				date(stopped_at, 'localtime') AS date,
@@ -84,21 +85,20 @@ export const getTimerStatistics = (): TimerStatistics => {
 				COUNT(*) AS sessions
 			FROM sessions
 			WHERE stopped_at IS NOT NULL
-				AND date(stopped_at, 'localtime') >= date('now', 'localtime', '-364 days')
-			GROUP BY date(stopped_at, 'localtime')`
+			GROUP BY date(stopped_at, 'localtime')
+			ORDER BY date`
 		)
 		.all() as Array<{ date: string; seconds: number; sessions: number }>
 
-	const dailyByDate = new Map(dailyRows.map((row) => [row.date, row]))
+	const calendarByDate = new Map(calendar.map((row) => [row.date, row]))
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
-	const calendar = Array.from({ length: 365 }, (_, index) => {
+	const daily = Array.from({ length: 7 }, (_, index) => {
 		const date = new Date(today)
-		date.setDate(today.getDate() - (364 - index))
+		date.setDate(today.getDate() - (6 - index))
 		const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-		return dailyByDate.get(dateKey) ?? { date: dateKey, seconds: 0, sessions: 0 }
+		return calendarByDate.get(dateKey) ?? { date: dateKey, seconds: 0, sessions: 0 }
 	})
-	const daily = calendar.slice(-7)
 
 	const recent = db
 		.prepare(

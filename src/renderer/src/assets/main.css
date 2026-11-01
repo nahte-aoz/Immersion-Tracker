@@ -769,11 +769,53 @@ h1 {
   padding-top: 24px;
 }
 
+.activity-section .section-heading-row {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .activity-section h2 {
-  margin: 0 0 12px;
+  margin: 0;
   color: #e4e4e4;
   font-size: 15px;
   font-weight: 600;
+}
+
+.year-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.year-label {
+  min-width: 40px;
+  color: #e4e4e4;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.year-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #6b6d6e;
+  border-radius: 4px;
+  background: transparent;
+  color: #e4e4e4;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.year-button:hover:not(:disabled) {
+  border-color: #9a9c9d;
+  background: #5d5e5f;
+}
+
+.year-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .calendar-scroll {

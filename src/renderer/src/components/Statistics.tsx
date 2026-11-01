@@ -16,6 +16,17 @@ const formatDay = (date: string): string => {
   return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(parsed)
 }
 
+const formatFullDate = (date: string): string =>
+  new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(`${date}T12:00:00`))
+
+const toDateKey = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
 const formatSessionDate = (date: string | null): string => {
   if (!date) return 'Date unavailable'
   return new Intl.DateTimeFormat(undefined, {
@@ -37,6 +48,7 @@ const getActivityLevel = (seconds: number): number => {
 function Statistics(): React.JSX.Element {
   const [statistics, setStatistics] = useState<TimerStatistics | null>(null)
   const [error, setError] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear())
 
   useEffect(() => {
     let active = true
@@ -57,7 +69,9 @@ function Statistics(): React.JSX.Element {
     return (
       <section className="statistics-view" aria-labelledby="statistics-title">
         <h1 id="statistics-title">Statistics</h1>
-        <p className="state-message" role="alert">Unable to load statistics.</p>
+        <p className="state-message" role="alert">
+          Unable to load statistics.
+        </p>
       </section>
     )
   }
@@ -66,33 +80,41 @@ function Statistics(): React.JSX.Element {
     return (
       <section className="statistics-view" aria-labelledby="statistics-title">
         <h1 id="statistics-title">Statistics</h1>
-        <p className="state-message" aria-live="polite">Loading...</p>
+        <p className="state-message" aria-live="polite">
+          Loading...
+        </p>
       </section>
     )
   }
 
   const maxDailySeconds = Math.max(...statistics.daily.map((day) => day.seconds), 60)
   const today = statistics.daily[statistics.daily.length - 1]
-  const calendarOffset = new Date(`${statistics.calendar[0].date}T12:00:00`).getDay()
-  const calendarWeekCount = Math.ceil((statistics.calendar.length + calendarOffset) / 7)
-  const calendarCells = Array.from(
-    { length: calendarWeekCount * 7 },
-    (_, index) => statistics.calendar[index - calendarOffset] ?? null
+  const currentYear = new Date().getFullYear()
+  const earliestYear = statistics.calendar.length
+    ? Number(statistics.calendar[0].date.slice(0, 4))
+    : currentYear
+  const activityByDate = new Map(statistics.calendar.map((day) => [day.date, day]))
+  const yearStart = new Date(selectedYear, 0, 1)
+  const calendarOffset = yearStart.getDay()
+  const daysInYear = Math.round(
+    (new Date(selectedYear + 1, 0, 1).getTime() - yearStart.getTime()) / 86400000
   )
-  const monthMarkers: Array<{ label: string; week: number }> = []
-  let previousMonth = ''
-  statistics.calendar.forEach((day, index) => {
-    const monthKey = day.date.slice(0, 7)
-    if (monthKey !== previousMonth) {
-      if (index > 0 || day.date.endsWith('-01')) {
-        monthMarkers.push({
-          label: new Intl.DateTimeFormat(undefined, { month: 'short' }).format(
-            new Date(`${day.date}T12:00:00`)
-          ),
-          week: Math.floor((calendarOffset + index) / 7)
-        })
-      }
-      previousMonth = monthKey
+  const calendarWeekCount = Math.ceil((daysInYear + calendarOffset) / 7)
+  const calendarCells = Array.from({ length: calendarWeekCount * 7 }, (_, index) => {
+    const dayIndex = index - calendarOffset
+    if (dayIndex < 0 || dayIndex >= daysInYear) return null
+    const date = toDateKey(new Date(selectedYear, 0, 1 + dayIndex))
+    return activityByDate.get(date) ?? { date, seconds: 0, sessions: 0 }
+  })
+  const monthMarkers = Array.from({ length: 12 }, (_, month) => {
+    const dayIndex = Math.round(
+      (new Date(selectedYear, month, 1).getTime() - yearStart.getTime()) / 86400000
+    )
+    return {
+      label: new Intl.DateTimeFormat(undefined, { month: 'short' }).format(
+        new Date(selectedYear, month, 1)
+      ),
+      week: Math.floor((calendarOffset + dayIndex) / 7)
     }
   })
   const metrics = [
@@ -131,12 +153,37 @@ function Statistics(): React.JSX.Element {
       </div>
 
       <section className="activity-section" aria-labelledby="activity-title">
-        <h2 id="activity-title">Study activity</h2>
+        <div className="section-heading-row">
+          <h2 id="activity-title">Study activity</h2>
+          <div className="year-nav">
+            <button
+              type="button"
+              className="year-button"
+              aria-label="Previous year"
+              disabled={selectedYear <= earliestYear}
+              onClick={() => setSelectedYear((year) => year - 1)}
+            >
+              ‹
+            </button>
+            <span className="year-label" aria-live="polite">
+              {selectedYear}
+            </span>
+            <button
+              type="button"
+              className="year-button"
+              aria-label="Next year"
+              disabled={selectedYear >= currentYear}
+              onClick={() => setSelectedYear((year) => year + 1)}
+            >
+              ›
+            </button>
+          </div>
+        </div>
         <div className="calendar-scroll">
           <div className="activity-calendar">
             <div className="calendar-months">
               {monthMarkers.map((month) => (
-                <span key={`${month.label}-${month.week}`} style={{ left: `${month.week * 15}px` }}>
+                <span key={`${month.label}-${month.week}`} style={{ left: `${month.week * 13}px` }}>
                   {month.label}
                 </span>
               ))}
@@ -150,7 +197,7 @@ function Statistics(): React.JSX.Element {
               <div
                 className="calendar-days"
                 role="img"
-                aria-label="Daily study time during the past year"
+                aria-label={`Daily study time in ${selectedYear}`}
                 style={{ gridAutoColumns: '10px' }}
               >
                 {calendarCells.map((day, index) =>
@@ -158,11 +205,15 @@ function Statistics(): React.JSX.Element {
                     <span
                       key={day.date}
                       className={`calendar-cell level-${getActivityLevel(day.seconds)}`}
-                      title={`${day.date}: ${formatDuration(day.seconds)}`}
-                      aria-label={`${day.date}: ${formatDuration(day.seconds)}`}
+                      title={`${formatFullDate(day.date)}: ${formatDuration(day.seconds)}`}
+                      aria-label={`${formatFullDate(day.date)}: ${formatDuration(day.seconds)}`}
                     />
                   ) : (
-                    <span key={`padding-${index}`} className="calendar-cell is-padding" aria-hidden="true" />
+                    <span
+                      key={`padding-${index}`}
+                      className="calendar-cell is-padding"
+                      aria-hidden="true"
+                    />
                   )
                 )}
               </div>

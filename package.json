@@ -15,8 +15,9 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
+    "fetch:owocr": "node scripts/fetch-owocr.mjs",
+    "build:unpack": "npm run fetch:owocr && npm run build && electron-builder --dir",
+    "build:win": "npm run fetch:owocr && npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },
@@ -26,8 +27,7 @@
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.3.9",
     "express": "^5.2.1",
-    "franc-min": "^6.2.0",
-    "tesseract.js": "^7.0.0"
+    "franc-min": "^6.2.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

@@ -9,7 +9,7 @@ import {
   recordTimerSession,
   setOcrLanguages
 } from './db'
-import { getScreenPreview, startScreenOcr, stopScreenOcr } from './screenOcr'
+import { getScreenPreview, shutdownScreenOcr, startScreenOcr, stopScreenOcr } from './screenOcr'
 import type { ScreenRegion } from '../preload/types'
 
 function createWindow(): void {
@@ -90,6 +90,8 @@ app.whenReady().then(() => {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
+app.on('before-quit', shutdownScreenOcr)
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -136,6 +138,22 @@ const stopTimerInterval = (): void => {
   recordTimerSession(seconds - sessionStartSeconds)
   broadcastTimerState()
 }
+
+// Saves the in-progress session when the app quits while the timer is running. The window may
+// already be gone by now, so this skips the renderer broadcast.
+const saveActiveTimerSession = (): void => {
+  if (!interval) return
+
+  clearInterval(interval)
+  interval = undefined
+  if (screenDetectionTimeout) clearTimeout(screenDetectionTimeout)
+  screenDetectionTimeout = undefined
+  activeTimerSources.clear()
+  const sessionSeconds = seconds - sessionStartSeconds
+  if (sessionSeconds > 0) recordTimerSession(sessionSeconds)
+}
+
+app.on('before-quit', saveActiveTimerSession)
 
 const setTimerSource = (source: 'manual' | 'screen', active: boolean): void => {
   if (active) {
