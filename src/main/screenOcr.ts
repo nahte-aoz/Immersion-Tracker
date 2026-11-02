@@ -1,8 +1,17 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { app, desktopCapturer, nativeImage, screen, type Display, type NativeImage } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  nativeImage,
+  screen,
+  type Display,
+  type NativeImage
+} from 'electron'
 import { toDetectorLanguage } from './languages'
 import type {
   ScreenArea,
@@ -97,14 +106,15 @@ const openOwocrSocket = (): Promise<WebSocket> =>
 
 // Only on-device engines: OneOCR (Windows 11) with Windows' built-in OCR as the fallback.
 // Cloud engines are left out so captured frames never leave the machine.
-const buildOwocrConfig = (language: string): string =>
+const buildOwocrConfig = (language: string, useOneOcr: boolean): string =>
   [
     '[general]',
     'read_from = websocket',
     'write_to = websocket',
     `websocket_port = ${owocrPort}`,
-    'engines = oneocr,winrtocr',
-    'engine = oneocr',
+    // OneOCR when it's available; Windows' built-in OCR only as a fallback.
+    `engines = ${useOneOcr ? 'oneocr,winrtocr' : 'winrtocr'}`,
+    `engine = ${useOneOcr ? 'oneocr' : 'winrtocr'}`,
     `language = ${language}`,
     'output_format = text',
     'line_separator = \\n',
@@ -114,12 +124,52 @@ const buildOwocrConfig = (language: string): string =>
     ''
   ].join('\n')
 
-const launchOwocr = (executable: string, language: string): void => {
+const oneOcrFiles = ['oneocr.dll', 'oneocr.onemodel', 'onnxruntime.dll']
+
+const runPowerShell = (command: string): Promise<string> =>
+  new Promise((resolve) => {
+    execFile(
+      'powershell',
+      ['-NoProfile', '-Command', command],
+      { timeout: 15000, windowsHide: true, encoding: 'utf8' },
+      (error, stdout) => resolve(error ? '' : stdout.trim())
+    )
+  })
+
+// OneOCR is the Windows Snipping Tool's text recogniser. OwOCR copies its three files into its
+// config folder on first use, but it can't find the Snipping Tool from our private home folder,
+// so it silently fell back to Windows' weaker OCR. Copy them ourselves, using the real user
+// profile. Returns whether OneOCR is ready.
+const prepareOneOcr = async (home: string): Promise<boolean> => {
+  const target = join(home, '.config', 'oneocr')
+  if (oneOcrFiles.every((file) => existsSync(join(target, file)))) return true
+
+  const sources = [join(homedir(), '.config', 'oneocr')]
+  const installLocation = await runPowerShell(
+    'Get-AppxPackage Microsoft.ScreenSketch | Select-Object -ExpandProperty InstallLocation'
+  )
+  if (installLocation) sources.push(join(installLocation, 'SnippingTool'))
+
+  const source = sources.find((folder) =>
+    oneOcrFiles.every((file) => existsSync(join(folder, file)))
+  )
+  if (!source) return false
+
+  try {
+    mkdirSync(target, { recursive: true })
+    for (const file of oneOcrFiles) copyFileSync(join(source, file), join(target, file))
+    return true
+  } catch {
+    return false
+  }
+}
+
+const launchOwocr = (executable: string, language: string, useOneOcr: boolean): void => {
   // OwOCR reads ~/.config/owocr_config.ini, so give it a private home to keep this app's
   // settings separate from any OwOCR install the user already has.
   const home = join(app.getPath('userData'), 'owocr-home')
   mkdirSync(join(home, '.config'), { recursive: true })
-  writeFileSync(join(home, '.config', 'owocr_config.ini'), buildOwocrConfig(language))
+  writeFileSync(join(home, '.config', 'owocr_config.ini'), buildOwocrConfig(language, useOneOcr))
   owocrProcessLanguage = language
 
   owocrProcess = spawn(executable, [], {
@@ -163,7 +213,14 @@ const connectOwocr = async (languages: string[]): Promise<WebSocket> => {
           'run "npm run fetch:owocr" to bundle it.'
       )
     }
-    if (!owocrProcess) launchOwocr(executable, language)
+    if (!owocrProcess) {
+      const home = join(app.getPath('userData'), 'owocr-home')
+      const useOneOcr = await prepareOneOcr(home)
+      console.info(
+        `[screen-ocr] OCR engine: ${useOneOcr ? 'OneOCR' : 'Windows OCR (OneOCR unavailable)'}`
+      )
+      launchOwocr(executable, language, useOneOcr)
+    }
   }
 
   const deadline = Date.now() + owocrStartupTimeoutMs
@@ -344,9 +401,14 @@ const clusterOverlappingRects = (rects: PixelRect[]): PixelRect[][] => {
 
 // One image per cluster of overlapping areas: only the selected pixels are kept (everything else
 // is black), so text inside an overlap appears - and is read - once.
-const buildClusterLayer = (image: NativeImage, cluster: PixelRect[]): BitmapLayer => {
+const buildClusterLayer = (
+  image: NativeImage,
+  cluster: PixelRect[],
+  masks: PixelRect[]
+): BitmapLayer => {
   const bounds = boundsOf(cluster)
   const source = image.crop(bounds).toBitmap()
+  blackOut(source, bounds, masks)
   if (cluster.length === 1) return { width: bounds.width, height: bounds.height, pixels: source }
 
   const pixels = Buffer.alloc(bounds.width * bounds.height * 4)
@@ -404,14 +466,115 @@ const toPixelRects = (areas: ScreenArea[], size: { width: number; height: number
         rect.height >= 4
     )
 
+const windowOrderHelper = (): string | undefined =>
+  [
+    join(process.resourcesPath, 'audio-sessions', 'window-order.exe'),
+    join(app.getAppPath(), 'resources', 'audio-sessions', 'window-order.exe')
+  ].find((candidate) => existsSync(candidate))
+
+const subtractRect = (rect: PixelRect, cut: PixelRect): PixelRect[] => {
+  if (!rectsOverlap(rect, cut)) return [rect]
+  const pieces: PixelRect[] = []
+  const rectRight = rect.x + rect.width
+  const rectBottom = rect.y + rect.height
+  const cutRight = cut.x + cut.width
+  const cutBottom = cut.y + cut.height
+  const top = Math.max(rect.y, cut.y)
+  const bottom = Math.min(rectBottom, cutBottom)
+  if (cut.y > rect.y)
+    pieces.push({ x: rect.x, y: rect.y, width: rect.width, height: cut.y - rect.y })
+  if (cutBottom < rectBottom) {
+    pieces.push({ x: rect.x, y: cutBottom, width: rect.width, height: rectBottom - cutBottom })
+  }
+  if (cut.x > rect.x)
+    pieces.push({ x: rect.x, y: top, width: cut.x - rect.x, height: bottom - top })
+  if (cutRight < rectRight) {
+    pieces.push({ x: cutRight, y: top, width: rectRight - cutRight, height: bottom - top })
+  }
+  return pieces
+}
+
+// The parts of this app's own windows that are actually showing on `display` (not hidden behind
+// other windows), in image pixels. These are blacked out so the app's own text is never read,
+// while the app stays visible to screenshots and recorders.
+const getOwnWindowMasks = async (
+  display: Display,
+  imageSize: { width: number; height: number }
+): Promise<PixelRect[]> => {
+  const showing = BrowserWindow.getAllWindows().some((window) => {
+    if (!window.isVisible() || window.isMinimized()) return false
+    const bounds = window.getBounds()
+    return (
+      bounds.x < display.bounds.x + display.bounds.width &&
+      display.bounds.x < bounds.x + bounds.width &&
+      bounds.y < display.bounds.y + display.bounds.height &&
+      display.bounds.y < bounds.y + bounds.height
+    )
+  })
+  const helper = windowOrderHelper()
+  if (!showing || !helper) return []
+
+  const windows = await new Promise<Array<PixelRect & { pid: number }>>((resolve) => {
+    execFile(helper, { timeout: 3000, windowsHide: true, encoding: 'utf8' }, (error, stdout) => {
+      try {
+        resolve(error ? [] : (JSON.parse(stdout) as Array<PixelRect & { pid: number }>))
+      } catch {
+        resolve([])
+      }
+    })
+  })
+
+  const origin = screen.dipToScreenPoint({ x: display.bounds.x, y: display.bounds.y })
+  const physical = screen.dipToScreenRect(null, display.bounds)
+  const scaleX = imageSize.width / physical.width
+  const scaleY = imageSize.height / physical.height
+
+  const masks: PixelRect[] = []
+  windows.forEach((window, index) => {
+    if (window.pid !== process.pid) return
+    // Whatever is above this window in the z-order hides part of it.
+    let visible: PixelRect[] = [window]
+    for (const above of windows.slice(0, index)) {
+      if (above.pid === process.pid) continue
+      visible = visible.flatMap((piece) => subtractRect(piece, above))
+    }
+    for (const piece of visible) {
+      masks.push({
+        x: Math.round((piece.x - origin.x) * scaleX),
+        y: Math.round((piece.y - origin.y) * scaleY),
+        width: Math.round(piece.width * scaleX),
+        height: Math.round(piece.height * scaleY)
+      })
+    }
+  })
+  return masks
+}
+
+const blackPixel = Buffer.from([0, 0, 0, 255])
+
+const blackOut = (bitmap: Buffer, bounds: PixelRect, masks: PixelRect[]): void => {
+  for (const mask of masks) {
+    const left = Math.max(bounds.x, mask.x)
+    const top = Math.max(bounds.y, mask.y)
+    const right = Math.min(bounds.x + bounds.width, mask.x + mask.width)
+    const bottom = Math.min(bounds.y + bounds.height, mask.y + mask.height)
+    if (right <= left || bottom <= top) continue
+    for (let y = top; y < bottom; y++) {
+      const start = ((y - bounds.y) * bounds.width + (left - bounds.x)) * 4
+      bitmap.fill(blackPixel, start, start + (right - left) * 4)
+    }
+  }
+}
+
 const captureChangedAreas = async (target: ScreenOcrTarget): Promise<CapturedFrame | null> => {
   const image = await captureDisplay(target.displayId)
   const size = image.getSize()
   const rects = toPixelRects(target.areas, size)
   if (rects.length === 0) throw new Error('Select at least one screen area.')
 
+  const masks = await getOwnWindowMasks(resolveDisplay(target.displayId), size)
   const layer = stackLayers(
-    clusterOverlappingRects(rects).map((cluster) => buildClusterLayer(image, cluster))
+    clusterOverlappingRects(rects).map((cluster) => buildClusterLayer(image, cluster, masks))
   )
   const frameKey = `${resolveDisplay(target.displayId).id}:${size.width}x${size.height}:${rects
     .map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`)
@@ -428,6 +591,13 @@ const captureChangedAreas = async (target: ScreenOcrTarget): Promise<CapturedFra
   return { regionKey: frameKey, image: png }
 }
 
+// Full-width Latin letters and digits (typed with a Japanese IME, e.g. "ｓｏｕｒｃｅ") are
+// Latin text, not Japanese: fold them to plain ASCII before the language is detected.
+const foldFullwidthLatin = (text: string): string =>
+  text.replace(/[\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A]/g, (character) =>
+    String.fromCharCode(character.charCodeAt(0) - 0xfee0)
+  )
+
 const processRecognizedText = async (
   frame: CapturedFrame,
   rawText: string,
@@ -437,7 +607,7 @@ const processRecognizedText = async (
   // filtered by content ratio alone.
   const recognizedBlocks: RecognizedBlock[] = rawText
     .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .map((line) => foldFullwidthLatin(line.replace(/\s+/g, ' ').trim()))
     .filter((line) => {
       const characters = Array.from(line)
       const contentCount = characters.filter((character) => /[\p{L}\p{N}]/u.test(character)).length
@@ -532,7 +702,15 @@ const detectBlockLanguage = (
   if (hasHanCharacters && cjkLanguages.length === 1) return cjkLanguages[0]
 
   if (block.letterCount < 12) return 'und'
-  return franc(block.text, { only: detectorLanguages, minLength: 12 })
+  // Text without any Han/kana characters can't be Japanese or Chinese.
+  const hasJapaneseScript = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(
+    block.text
+  )
+  const candidates = hasJapaneseScript
+    ? detectorLanguages
+    : detectorLanguages.filter((language) => language !== 'jpn' && language !== 'cmn')
+  if (candidates.length === 0) return 'und'
+  return franc(block.text, { only: candidates, minLength: 12 })
 }
 
 const failScan = (scanId: number, message: string): void => {

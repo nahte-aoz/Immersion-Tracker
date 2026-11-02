@@ -1,7 +1,7 @@
 {
   "name": "immersion-tracker",
   "productName": "Immersion Tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Automatically tracks language immersion time from on-screen text (OCR) and spoken audio.",
   "main": "./out/main/index.js",
   "author": "nahte-aoz",

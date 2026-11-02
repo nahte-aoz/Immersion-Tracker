@@ -30,7 +30,11 @@ extraResources:
     to: THIRD_PARTY_NOTICES.md
 win:
   executableName: immersion-tracker
+  icon: build/icon.ico
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false

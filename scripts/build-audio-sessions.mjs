@@ -1,6 +1,6 @@
-// Compiles the small audio-session lister (native/audio-sessions/AudioSessions.cs) with the
+// Compiles the small Windows helpers (native/*/*.cs: audio-session lister, window z-order) with the
 // .NET Framework C# compiler that ships with every Windows install, so no SDK is needed.
-// Output: resources/audio-sessions/audio-sessions.exe (bundled by electron-builder).
+// Output: resources/audio-sessions/*.exe (bundled by electron-builder).
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -24,19 +24,27 @@ if (!existsSync(compiler)) {
   process.exit(1)
 }
 
-const output = join(projectRoot, 'resources', 'audio-sessions', 'audio-sessions.exe')
-mkdirSync(dirname(output), { recursive: true })
-const result = spawnSync(
-  compiler,
-  [
-    '-nologo',
-    '-target:exe',
-    '-platform:x64',
-    '-optimize+',
-    `-out:${output}`,
-    join(projectRoot, 'native', 'audio-sessions', 'AudioSessions.cs')
-  ],
-  { stdio: 'inherit' }
-)
-if (result.status !== 0) process.exit(result.status ?? 1)
-console.log(`[build-audio-sessions] built ${output}`)
+const helpers = [
+  ['audio-sessions', 'AudioSessions.cs'],
+  ['window-order', 'WindowOrder.cs']
+]
+const outputDir = join(projectRoot, 'resources', 'audio-sessions')
+mkdirSync(outputDir, { recursive: true })
+
+for (const [name, source] of helpers) {
+  const output = join(outputDir, `${name}.exe`)
+  const result = spawnSync(
+    compiler,
+    [
+      '-nologo',
+      '-target:exe',
+      '-platform:x64',
+      '-optimize+',
+      `-out:${output}`,
+      join(projectRoot, 'native', name, source)
+    ],
+    { stdio: 'inherit' }
+  )
+  if (result.status !== 0) process.exit(result.status ?? 1)
+  console.log(`[build-audio-sessions] built ${output}`)
+}

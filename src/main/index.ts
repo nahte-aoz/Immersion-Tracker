@@ -96,10 +96,6 @@ function createWindow(): void {
     }
   })
 
-  // Keep this window out of screen captures, so Screen OCR never reads the app's own text (it
-  // sees what is behind the window instead), even when other windows only partly cover it.
-  mainWindow.setContentProtection(true)
-
   // "Minimize to tray": closing or minimizing the window hides it to the system tray, so the timer, OCR and
   // audio keep running. Quit from the tray menu.
   mainWindow.on('close', (event) => {
