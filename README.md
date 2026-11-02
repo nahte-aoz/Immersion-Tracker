@@ -46,7 +46,7 @@ Immersion Tracker runs next to your games, videos and anime and logs study time 
 The **Study** tab has a manual **Start session / Stop and save** timer. Time is only saved when a session ends (or when you quit the app, so you never lose a running session).
 
 ### Pick your languages and a profile
-- In **Settings → OCR languages**, tick every language you study.
+- In **Settings -> OCR languages**, tick every language you study.
 - Use the **Profile** menu in the top bar to choose **All** or a single language. With a single language selected, only that language counts: Japanese audio will not start the timer while the English profile is selected, and vice versa.
 
 ### Screen OCR
@@ -54,7 +54,7 @@ The **Study** tab has a manual **Start session / Stop and save** timer. Time is 
 2. Press **Select areas** and drag over the text you want read. **Left click + drag** creates an area, **Ctrl + A** selects the full screen, **Right click** on an area deletes it. Your areas are remembered, per monitor.
 3. Press **Start scanning**. Whenever text in a selected language appears in an area, the timer runs; it keeps running for a short grace period after the text disappears so brief gaps don't split your session.
 
-Any part of the app's own window that is showing over a scanned area is ignored, so it never reads itself. The app stays visible to screenshots and recorders such as OBS.
+Any part of the app's own window that is showing over a scanned area is ignored, so it never reads itself.
 
 ![Screen OCR](docs/images/ocr.png)
 
