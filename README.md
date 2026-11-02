@@ -61,9 +61,6 @@ Open the **Audio** tab and press **Start listening**. The meter shows the sound 
 - **Applications to listen to** – tick applications (they appear once they have played sound) to listen to only those. Leave all unticked to hear everything your PC plays.
 - **Settings -> Always listen to audio** – listening starts with the app and resumes the timer whenever target language audio is heard.
 
-### Statistics
-Pick a **Language** (or *All languages*) and a range. The chart shows time per hour or day with a running total; below it are time per language, a yearly calendar, and your recent sessions (press ✕ to delete one).
-
 ## Privacy
 
 Everything happens on your computer.
@@ -78,21 +75,6 @@ Everything happens on your computer.
 - **Japanese/other text isn't detected** – select the language in Settings -> OCR languages, and make sure the right Profile is chosen.
 - **Audio isn't detected** – check the meter on the Audio tab moves while sound plays. If you ticked applications, only those are heard.
 - **Can't find the window** – it is in the system tray (Minimize to tray). Click the tray icon.
-
-## Build from source
-
-Requires Windows, [Node.js](https://nodejs.org/) 22 or newer and Git.
-
-```bash
-git clone https://github.com/nahte-aoz/Immersion-Tracker.git
-cd Immersion-Tracker
-npm install
-npm run fetch:owocr          # downloads the bundled OCR engine (~380 MB, checksum verified)
-npm run fetch:speech-models  # downloads the speech models (~76 MB, checksum verified)
-npm run build:audio-sessions # compiles the small audio helper
-npm run dev                  # run in development
-npm run build:win            # produces the installer in dist/
-```
 
 ## Acknowledgements
 
