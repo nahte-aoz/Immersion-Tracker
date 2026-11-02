@@ -38,7 +38,7 @@ Immersion Tracker runs next to your games, videos and anime and logs study time 
 1. Download **`immersion-tracker-<version>-setup.exe`** from the [latest release](https://github.com/nahte-aoz/Immersion-Tracker/releases/latest).
 2. Run it. Windows may show a *"Windows protected your PC"* (SmartScreen) message, choose **More info → Run anyway**.
 
-**Requirements:** Windows 10 (version 2004 or newer) or Windows 11, 64-bit. Windows 11 is recommended: its built-in Snipping Tool text engine gives the best OCR. On Windows 10 the app falls back to Windows' built-in OCR, which needs the matching language pack installed (Settings -> Time & language -> Language).
+**Requirements:** Windows 10 (version 2004 or newer) or Windows 11, 64-bit. Windows 11 is recommended: the app reads text with **OneOCR**, the text engine of the Windows Snipping Tool. It is copied from your Windows installation the first time OCR runs, so nothing needs installing. On Windows 10, where OneOCR isn't available, the app falls back to Windows' built-in OCR, which needs the matching language pack installed (Settings -> Time & language -> Language).
 
 ## How to use
 
@@ -54,12 +54,16 @@ The **Study** tab has a manual **Start session / Stop and save** timer. Time is 
 2. Press **Select areas** and drag over the text you want read. **Left click + drag** creates an area, **Ctrl + A** selects the full screen, **Right click** on an area deletes it. Your areas are remembered, per monitor.
 3. Press **Start scanning**. Whenever text in a selected language appears in an area, the timer runs; it keeps running for a short grace period after the text disappears so brief gaps don't split your session.
 
-The app's own window is hidden from screen capture, so it never reads itself.
+Any part of the app's own window that is showing over a scanned area is ignored, so it never reads itself. The app stays visible to screenshots and recorders such as OBS.
+
+![Screen OCR](docs/images/ocr.png)
 
 ### Audio
 Open the **Audio** tab and press **Start listening**. The meter shows the sound being heard. Speech is detected and its language identified on your PC; when it matches your profile, the timer runs.
 - **Applications to listen to** – tick applications (they appear once they have played sound) to listen to only those. Leave all unticked to hear everything your PC plays.
 - **Settings -> Always listen to audio** – listening starts with the app and resumes the timer whenever target language audio is heard.
+
+![Audio](docs/images/audio.png)
 
 ## Privacy
 
