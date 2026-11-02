@@ -5,7 +5,7 @@
 <h1 align="center">Immersion Tracker</h1>
 
 <p align="center">
-  <b>Automatically track the time you spend immersed in the language you are learning.</b>
+  <b>Automatically track the time you spend doing immersion in the language you are learning.</b>
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
 
 ---
 
-Immersion Tracker runs next to your games, videos and anime and logs study time for you. It watches the screen for text and listens to the sound your computer plays, and when it recognises the language you are studying, the timer runs. No manual start/stop, no cloud account, nothing to configure first.
+Immersion Tracker runs next to your games, videos and anime and logs study time for you. It watches the screen for text and listens to the sound your computer plays, and when it recognizes the language you are studying, the timer runs. 
 
 ![Statistics](docs/images/statistics.png)
 
@@ -25,7 +25,7 @@ Immersion Tracker runs next to your games, videos and anime and logs study time 
 
 ## Features
 
-- **Screen OCR** – draw one or more areas on any monitor (subtitles, a game's text box, ...). Text in your study language starts the timer. Overlapping areas are only read once.
+- **Screen OCR** – draw one or more areas on any monitor (subtitles, a game's text box, etc.). Text in your study language starts the timer.
 - **Audio language detection** – listens to what your PC is playing (not your microphone), spots speech, and identifies the spoken language. Optionally only listen to the applications you tick (e.g. your browser but not Discord).
 - **Language profiles** – pick one language (e.g. Japanese) and only that language is detected and logged, or pick **All** to track every language you selected in Settings.
 - **Statistics** – an Anki-style chart (1 day, 7 days, 1 month, 3 months, 1 year), a yearly activity calendar, time per language, and a list of recent sessions you can delete.
@@ -36,12 +36,11 @@ Immersion Tracker runs next to your games, videos and anime and logs study time 
 ## Getting started
 
 1. Download **`immersion-tracker-<version>-setup.exe`** from the [latest release](https://github.com/nahte-aoz/Immersion-Tracker/releases/latest).
-2. Run it. Windows may show a *"Windows protected your PC"* (SmartScreen) message because the installer is not code-signed – choose **More info → Run anyway**.
-3. Start **Immersion Tracker** from the desktop or Start menu shortcut.
+2. Run it. Windows may show a *"Windows protected your PC"* (SmartScreen) message, choose **More info → Run anyway**.
 
-**Requirements:** Windows 10 (version 2004 or newer) or Windows 11, 64-bit. Windows 11 is recommended: its built-in Snipping Tool text engine gives the best OCR. On Windows 10 the app falls back to Windows' built-in OCR, which needs the matching language pack installed (Settings → Time & language → Language).
+**Requirements:** Windows 10 (version 2004 or newer) or Windows 11, 64-bit. Windows 11 is recommended: its built-in Snipping Tool text engine gives the best OCR. On Windows 10 the app falls back to Windows' built-in OCR, which needs the matching language pack installed (Settings -> Time & language -> Language).
 
-## How it works
+## How to use
 
 ### Study
 The **Study** tab has a manual **Start session / Stop and save** timer. Time is only saved when a session ends (or when you quit the app, so you never lose a running session).
@@ -60,31 +59,23 @@ The app's own window is hidden from screen capture, so it never reads itself.
 ### Audio
 Open the **Audio** tab and press **Start listening**. The meter shows the sound being heard. Speech is detected and its language identified on your PC; when it matches your profile, the timer runs.
 - **Applications to listen to** – tick applications (they appear once they have played sound) to listen to only those. Leave all unticked to hear everything your PC plays.
-- **Settings → Always listen to audio** – listening starts with the app and resumes the timer whenever target-language audio is heard.
+- **Settings -> Always listen to audio** – listening starts with the app and resumes the timer whenever target language audio is heard.
 
 ### Statistics
 Pick a **Language** (or *All languages*) and a range. The chart shows time per hour or day with a running total; below it are time per language, a yearly calendar, and your recent sessions (press ✕ to delete one).
 
-### Settings
-| Setting | What it does |
-| --- | --- |
-| OCR languages | The languages you study (collapsible list). |
-| Run OCR on start | Starts scanning your saved areas when the app launches. |
-| Minimize to tray | Closing or minimizing hides the app to the system tray; it keeps tracking. Use the tray icon's **Open** / **Quit**. |
-| Always listen to audio | Starts audio listening with the app and keeps it on. |
-
 ## Privacy
 
 Everything happens on your computer.
-- Screen text is recognised by a bundled OCR engine running locally. Only on-device engines are enabled – no cloud OCR.
-- Audio is analysed in memory and discarded straight away. **No audio is recorded, saved or uploaded**, and no screenshots are stored.
+- Screen text is recognized by a bundled OCR engine running locally. Only on-device engines are enabled – no cloud OCR.
+- Audio is analyzed in memory and discarded straight away. **No audio is recorded, saved or uploaded**, and no screenshots are stored.
 - Your sessions and settings are stored in a local database at `%APPDATA%\Immersion Tracker\`.
 - Immersion Tracker itself makes no network connections. The only network access is the bundled OwOCR program, which at startup asks PyPI which OwOCR version is newest (no screen, audio or personal data is sent).
 
 ## Troubleshooting
 
 - **"OwOCR … did not start" / OCR does nothing** – make sure nothing else is using port 17331, then restart the app. Anti-virus software occasionally blocks the bundled OCR program; allow it if prompted.
-- **Japanese/other text isn't detected** – select the language in Settings → OCR languages, and make sure the right Profile is chosen.
+- **Japanese/other text isn't detected** – select the language in Settings -> OCR languages, and make sure the right Profile is chosen.
 - **Audio isn't detected** – check the meter on the Audio tab moves while sound plays. If you ticked applications, only those are heard.
 - **Can't find the window** – it is in the system tray (Minimize to tray). Click the tray icon.
 
@@ -105,7 +96,7 @@ npm run build:win            # produces the installer in dist/
 
 ## Acknowledgements
 
-Immersion Tracker is inspired by [GameSentenceMiner](https://github.com/bpwhelan/GameSentenceMiner) by bpwhelan, and the statistics chart is modelled on [Anki](https://apps.ankiweb.net/)'s statistics window. It stands on the work of many open-source projects:
+Immersion Tracker is inspired by [GameSentenceMiner](https://github.com/bpwhelan/GameSentenceMiner) by bpwhelan and [Anki](https://apps.ankiweb.net/). It also uses the work of many open-source projects:
 
 - [OwOCR](https://github.com/AuroraWright/owocr) by AuroraWright – the bundled OCR engine host (GPL-3.0). Its OneOCR engine uses the text recogniser of Windows' Snipping Tool.
 - [OpenAI Whisper](https://github.com/openai/whisper) (MIT) and the ONNX export by [Xenova / Transformers.js](https://huggingface.co/Xenova/whisper-base) (Apache-2.0) – spoken language identification.
@@ -113,6 +104,5 @@ Immersion Tracker is inspired by [GameSentenceMiner](https://github.com/bpwhelan
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT).
 - [loopback-capture](https://github.com/WerdoxDev/loopback-capture) by WerdoxDev (MIT) – per-application audio capture.
 - [franc](https://github.com/wooorm/franc) (MIT) – text language detection.
-- [Electron](https://www.electronjs.org/), [React](https://react.dev/), [Vite / electron-vite](https://electron-vite.org/), [better-sqlite3](https://github.com/WiseLibs/better-sqlite3).
 
 Full license information is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and is also installed with the app.
