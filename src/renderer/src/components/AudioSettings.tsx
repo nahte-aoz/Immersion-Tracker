@@ -99,24 +99,6 @@ function AudioSettings({ active }: AudioSettingsProps): React.JSX.Element {
 
   return (
     <div className="audio-settings">
-      <h1 id="audio-settings-title">Settings</h1>
-
-      <div className="tooltip-host">
-        <label className="toggle-row">
-          <input
-            aria-describedby="always-listen-tooltip"
-            checked={settings?.alwaysListen ?? false}
-            disabled={!settings || isSaving}
-            onChange={(event) => void save({ alwaysListen: event.target.checked })}
-            role="switch"
-            type="checkbox"
-          />
-          <span>Always listen to audio</span>
-        </label>
-        <span className="tooltip" id="always-listen-tooltip" role="tooltip">
-          Resumes the timer whenever audio in the target languages is heard.
-        </span>
-      </div>
 
       <fieldset
         aria-labelledby="audio-apps-title"
@@ -126,7 +108,7 @@ function AudioSettings({ active }: AudioSettingsProps): React.JSX.Element {
         <legend id="audio-apps-title">Applications to listen to</legend>
         <p className="settings-message">
           {isSupported
-            ? 'Only the checked applications are heard. With none checked, all system audio is used. Applications appear here once they have played sound.'
+            ? 'ONLY the checked applications are heard. With none checked, all system audio is used. Applications appear here once they have played sound.'
             : 'Listening to specific applications needs Windows 10 version 2004 or later.'}
         </p>
         {isSupported && (

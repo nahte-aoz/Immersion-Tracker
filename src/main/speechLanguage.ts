@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, utilityProcess, type UtilityProcess } from 'electron'
+import { whisperLanguageCodes } from './languages'
 import { isPerAppCaptureSupported, listAudioSessions } from './audioApps'
 import audioWorkerPath from './speech/audioWorker?modulePath'
 import type { SpeechWorkerRequest, SpeechWorkerResponse } from './speech/workerProtocol'
@@ -15,7 +16,7 @@ let isActive = false
 let targetLanguages = new Set<string>()
 let activeResultCallback: ((result: SpeechLanguageResult) => void) | undefined
 let activeErrorCallback: ((message: string) => void) | undefined
-let activeActivityCallback: ((active: boolean) => void) | undefined
+let activeActivityCallback: ((active: boolean, language?: string) => void) | undefined
 let activeCaptureCallback: ((capturing: boolean) => void) | undefined
 let activeLevelCallback: ((rms: number) => void) | undefined
 // Lower-cased executable names to listen to; empty means all system audio.
@@ -37,23 +38,6 @@ const maxAppListFailures = 3
 const watchdogIntervalMs = 2000
 // Below this a guess is too uncertain to count as the target language.
 const minimumConfidence = 0.5
-
-// Whisper's language codes, keyed by the Tesseract-style codes the app stores.
-const whisperLanguageCodes: Record<string, string> = {
-  eng: 'en',
-  jpn: 'ja',
-  chi_sim: 'zh',
-  chi_tra: 'zh',
-  kor: 'ko',
-  rus: 'ru',
-  spa: 'es',
-  fra: 'fr',
-  deu: 'de',
-  ita: 'it',
-  por: 'pt',
-  ara: 'ar',
-  hin: 'hi'
-}
 
 const findSpeechModelDir = (): string | undefined => {
   const candidates = [
@@ -100,7 +84,7 @@ const handleWorkerMessage = (message: SpeechWorkerResponse): void => {
       isTarget
     }
     console.info('[speech-language]', result, `${Math.round(message.elapsedMs)}ms`)
-    activeActivityCallback?.(isTarget)
+    activeActivityCallback?.(isTarget, message.language)
     activeResultCallback?.(result)
   }
 }
@@ -242,7 +226,7 @@ export const startSpeechDetection = (
   languages: string[],
   onResult: (result: SpeechLanguageResult) => void,
   onError: (message: string) => void,
-  onActivity: (active: boolean) => void,
+  onActivity: (active: boolean, language?: string) => void,
   onCapture: (capturing: boolean) => void,
   onLevel: (rms: number) => void
 ): void => {

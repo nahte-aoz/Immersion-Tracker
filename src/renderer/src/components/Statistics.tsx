@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
+import StudyChart from './StudyChart'
 
 type TimerStatistics = Awaited<ReturnType<Window['api']['getTimerStatistics']>>
+type LanguageOption = Awaited<ReturnType<Window['api']['getSupportedOcrLanguages']>>[number]
+
+const unspecifiedLanguage = 'unknown'
 
 const formatDuration = (seconds: number): string => {
   if (seconds < 60) return `${seconds} sec`
@@ -9,11 +13,6 @@ const formatDuration = (seconds: number): string => {
   const minutes = totalMinutes % 60
   if (hours === 0) return `${totalMinutes} min`
   return `${hours} hr ${minutes} min`
-}
-
-const formatDay = (date: string): string => {
-  const parsed = new Date(`${date}T12:00:00`)
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(parsed)
 }
 
 const formatFullDate = (date: string): string =>
@@ -49,11 +48,23 @@ function Statistics(): React.JSX.Element {
   const [statistics, setStatistics] = useState<TimerStatistics | null>(null)
   const [error, setError] = useState(false)
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear())
+  // 'all' adds every language up; otherwise statistics for one language.
+  const [language, setLanguage] = useState('all')
+  const [reloadKey, setReloadKey] = useState(0)
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const [languageOptions, setLanguageOptions] = useState<LanguageOption[]>([])
+
+  useEffect(() => {
+    window.api
+      .getSupportedOcrLanguages()
+      .then(setLanguageOptions)
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     let active = true
     window.api
-      .getTimerStatistics()
+      .getTimerStatistics(language)
       .then((result) => {
         if (active) setStatistics(result)
       })
@@ -63,7 +74,32 @@ function Statistics(): React.JSX.Element {
     return () => {
       active = false
     }
-  }, [])
+  }, [language, reloadKey])
+
+  // Close the "are you sure" pop-up when clicking elsewhere or pressing Escape.
+  useEffect(() => {
+    if (confirmingId === null) return
+    const close = (): void => setConfirmingId(null)
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close()
+    }
+    document.addEventListener('click', close)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('click', close)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [confirmingId])
+
+  const deleteSession = async (id: number): Promise<void> => {
+    setConfirmingId(null)
+    try {
+      await window.api.deleteSession(id)
+      setReloadKey((key) => key + 1)
+    } catch {
+      setError(true)
+    }
+  }
 
   if (error) {
     return (
@@ -87,8 +123,6 @@ function Statistics(): React.JSX.Element {
     )
   }
 
-  const maxDailySeconds = Math.max(...statistics.daily.map((day) => day.seconds), 60)
-  const today = statistics.daily[statistics.daily.length - 1]
   const currentYear = new Date().getFullYear()
   const earliestYear = statistics.calendar.length
     ? Number(statistics.calendar[0].date.slice(0, 4))
@@ -117,40 +151,59 @@ function Statistics(): React.JSX.Element {
       week: Math.floor((calendarOffset + dayIndex) / 7)
     }
   })
-  const metrics = [
-    {
-      label: 'Total study time',
-      value: formatDuration(statistics.totalSeconds)
-    },
-    {
-      label: 'Sessions',
-      value: statistics.totalSessions.toLocaleString()
-    },
-    {
-      label: 'Average session',
-      value: formatDuration(Math.round(statistics.averageSeconds))
-    },
-    {
-      label: 'Today',
-      value: formatDuration(today?.seconds ?? 0)
-    }
-  ]
-
+  const languageName = (code: string): string =>
+    code === unspecifiedLanguage
+      ? 'Unspecified'
+      : (languageOptions.find((option) => option.code === code)?.name ?? code)
+  // Only languages that have recorded time.
+  const languageChoices = statistics.byLanguage.map((entry) => ({
+    code: entry.language,
+    name: languageName(entry.language)
+  }))
+  const maxLanguageSeconds = Math.max(...statistics.byLanguage.map((entry) => entry.seconds), 1)
   return (
     <section className="statistics-view" aria-labelledby="statistics-title">
       <div className="statistics-heading">
         <h1 id="statistics-title">Statistics</h1>
-        <span className="range-label">7 days</span>
+        <div className="statistics-controls">
+          <label className="profile-select">
+            <span>Language</span>
+            <select onChange={(event) => setLanguage(event.target.value)} value={language}>
+              <option value="all">All languages (total)</option>
+              {languageChoices.map((choice) => (
+                <option key={choice.code} value={choice.code}>
+                  {choice.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      <div className="metrics-grid" aria-label="Lifetime study summary">
-        {metrics.map((metric) => (
-          <div className="metric" key={metric.label}>
-            <span className="metric-label">{metric.label}</span>
-            <strong className="metric-value">{metric.value}</strong>
+      <StudyChart statistics={statistics} />
+
+      {language === 'all' && statistics.byLanguage.length > 0 && (
+        <section className="language-section" aria-labelledby="language-title">
+          <h2 id="language-title">Time by language</h2>
+          <div className="language-list">
+            {statistics.byLanguage.map((entry) => (
+              <div className="language-row" key={entry.language}>
+                <button
+                  className="language-name"
+                  onClick={() => setLanguage(entry.language)}
+                  type="button"
+                >
+                  {languageName(entry.language)}
+                </button>
+                <span className="language-bar">
+                  <span style={{ width: `${(entry.seconds / maxLanguageSeconds) * 100}%` }} />
+                </span>
+                <span className="language-time">{formatDuration(entry.seconds)}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </section>
+      )}
 
       <section className="activity-section" aria-labelledby="activity-title">
         <div className="section-heading-row">
@@ -231,34 +284,6 @@ function Statistics(): React.JSX.Element {
         </div>
       </section>
 
-      <section className="chart-section" aria-labelledby="weekly-title">
-        <div className="section-heading-row">
-          <div>
-            <h2 id="weekly-title">Daily study time</h2>
-          </div>
-        </div>
-        <div className="chart" role="img" aria-label="Study time during the last seven days">
-          {statistics.daily.map((day) => {
-            const height = day.seconds > 0 ? Math.max((day.seconds / maxDailySeconds) * 100, 4) : 0
-            return (
-              <div className="chart-day" key={day.date}>
-                <span className="chart-value">
-                  {day.seconds > 0 ? formatDuration(day.seconds) : ''}
-                </span>
-                <div className="chart-track">
-                  <div
-                    className={day.seconds > 0 ? 'chart-bar has-time' : 'chart-bar'}
-                    style={{ height: `${height}%` }}
-                    title={`${day.seconds} seconds across ${day.sessions} sessions`}
-                  />
-                </div>
-                <span className="chart-label">{formatDay(day.date)}</span>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
       <section className="recent-section" aria-labelledby="recent-title">
         <div className="section-heading-row recent-heading">
           <h2 id="recent-title">Recent sessions</h2>
@@ -270,6 +295,37 @@ function Statistics(): React.JSX.Element {
                 <span className="session-marker" aria-hidden="true" />
                 <span className="session-date">{formatSessionDate(session.stoppedAt)}</span>
                 <span className="session-duration">{formatDuration(session.seconds)}</span>
+                <div className="session-delete" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    aria-label="Delete session"
+                    className="session-delete-button"
+                    onClick={() => setConfirmingId(confirmingId === session.id ? null : session.id)}
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                  {confirmingId === session.id && (
+                    <div className="session-confirm" role="alertdialog">
+                      <p>Are you sure? This cannot be undone.</p>
+                      <div className="session-confirm-actions">
+                        <button
+                          className="session-confirm-delete"
+                          onClick={() => void deleteSession(session.id)}
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          className="session-confirm-cancel"
+                          onClick={() => setConfirmingId(null)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

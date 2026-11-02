@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 
+type ScreenDisplay = Awaited<ReturnType<Window['api']['getScreenDisplays']>>[number]
 type ScreenPreview = Awaited<ReturnType<Window['api']['getScreenPreview']>>
-type ScreenRegion = Parameters<Window['api']['startScreenScan']>[0]
+type ScreenArea = Parameters<Window['api']['setScreenAreas']>[1][number]
 type ScreenOcrResult = Parameters<Parameters<Window['api']['onScreenScanResult']>[0]>[0]
 type Point = { x: number; y: number }
 type DraftSelection = { start: Point; current: Point }
@@ -10,9 +11,22 @@ interface ScreenOcrProps {
   active: boolean
 }
 
+// Areas below this size (in preview pixels) are treated as accidental clicks.
+const minimumAreaPixels = 8
+const fullScreenArea: ScreenArea = { x: 0, y: 0, width: 1, height: 1 }
+
+const toArea = (first: Point, second: Point): ScreenArea => ({
+  x: Math.min(first.x, second.x),
+  y: Math.min(first.y, second.y),
+  width: Math.abs(second.x - first.x),
+  height: Math.abs(second.y - first.y)
+})
+
 function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
+  const [displays, setDisplays] = useState<ScreenDisplay[]>([])
+  const [displayId, setDisplayId] = useState<number | null>(null)
+  const [areas, setAreas] = useState<ScreenArea[]>([])
   const [preview, setPreview] = useState<ScreenPreview | null>(null)
-  const [region, setRegion] = useState<ScreenRegion | null>(null)
   const [draft, setDraft] = useState<DraftSelection | null>(null)
   const [isSelecting, setIsSelecting] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -43,47 +57,120 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     }
   }, [])
 
-  const selectScreenArea = async (): Promise<void> => {
-    setError('')
-    setResult(null)
-    setRegion(null)
-    setDraft(null)
-    setIsSelecting(false)
+  // A scan may already be running (e.g. started by "Run OCR on start" before this page loaded).
+  useEffect(() => {
+    window.api
+      .isScreenScanRunning()
+      .then(setIsScanning)
+      .catch(() => undefined)
+  }, [])
+
+  // Saved monitor and areas persist across restarts.
+  useEffect(() => {
+    Promise.all([window.api.getScreenDisplays(), window.api.getScreenOcrSettings()])
+      .then(([availableDisplays, settings]) => {
+        const selected =
+          availableDisplays.find((display) => display.id === settings.displayId) ??
+          availableDisplays.find((display) => display.isPrimary) ??
+          availableDisplays[0]
+        setDisplays(availableDisplays)
+        setDisplayId(selected?.id ?? null)
+        setAreas(selected ? (settings.areas[String(selected.id)] ?? []) : [])
+      })
+      .catch(() => setError('Unable to load the screen settings.'))
+  }, [])
+
+  const saveAreas = (nextAreas: ScreenArea[]): void => {
+    setAreas(nextAreas)
+    if (displayId === null) return
+    window.api.setScreenAreas(displayId, nextAreas).catch(() => {
+      setError('Unable to save the selected screen areas.')
+    })
+  }
+
+  const loadPreview = async (forDisplayId: number | null): Promise<boolean> => {
     try {
-      await window.api.setScreenRegion(null)
-      setPreview(await window.api.getScreenPreview())
-      setIsSelecting(true)
+      setPreview(await window.api.getScreenPreview(forDisplayId))
+      return true
     } catch {
-      setError('Unable to capture the primary screen.')
+      setError('Unable to capture the selected screen.')
+      return false
     }
   }
 
+  const startSelecting = async (): Promise<void> => {
+    setError('')
+    setResult(null)
+    setDraft(null)
+    setIsSelecting(await loadPreview(displayId))
+  }
+
+  const finishSelecting = (): void => {
+    setIsSelecting(false)
+    setDraft(null)
+    setPreview(null)
+  }
+
+  const changeDisplay = async (nextDisplayId: number): Promise<void> => {
+    setError('')
+    setResult(null)
+    setDraft(null)
+    try {
+      const settings = await window.api.setScreenDisplay(nextDisplayId)
+      setDisplayId(nextDisplayId)
+      setAreas(settings.areas[String(nextDisplayId)] ?? [])
+      if (isSelecting) await loadPreview(nextDisplayId)
+    } catch {
+      setError('Unable to switch screens.')
+    }
+  }
+
+  // Ctrl + A selects the whole screen.
+  useEffect(() => {
+    if (!active || !isSelecting || isScanning) return
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setError('')
+        saveAreas([fullScreenArea])
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, isSelecting, isScanning, displayId])
+
   const getPoint = (event: PointerEvent<HTMLImageElement>): Point | null => {
     const image = imageRef.current
-    if (!preview || !image) return null
+    if (!image) return null
     const bounds = image.getBoundingClientRect()
     return {
-      x: Math.max(
-        0,
-        Math.min(
-          preview.width,
-          Math.round(((event.clientX - bounds.left) * preview.width) / bounds.width)
-        )
-      ),
-      y: Math.max(
-        0,
-        Math.min(
-          preview.height,
-          Math.round(((event.clientY - bounds.top) * preview.height) / bounds.height)
-        )
-      )
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
     }
   }
 
   const onPointerDown = (event: PointerEvent<HTMLImageElement>): void => {
-    if (!isSelecting) return
+    if (!isSelecting || isScanning) return
     const point = getPoint(event)
     if (!point) return
+
+    // Right click deletes the topmost (most recently drawn) area under the cursor.
+    if (event.button === 2) {
+      event.preventDefault()
+      const index = areas.findLastIndex(
+        (area) =>
+          point.x >= area.x &&
+          point.x <= area.x + area.width &&
+          point.y >= area.y &&
+          point.y <= area.y + area.height
+      )
+      if (index >= 0) saveAreas(areas.filter((_, areaIndex) => areaIndex !== index))
+      return
+    }
+
+    if (event.button !== 0) return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     setDraft({ start: point, current: point })
@@ -95,43 +182,30 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     if (point) setDraft({ ...draft, current: point })
   }
 
-  const onPointerUp = async (event: PointerEvent<HTMLImageElement>): Promise<void> => {
-    if (!draft || !preview) return
-    const end = getPoint(event) ?? draft.current
-    const nextRegion = {
-      x: Math.min(draft.start.x, end.x),
-      y: Math.min(draft.start.y, end.y),
-      width: Math.abs(end.x - draft.start.x),
-      height: Math.abs(end.y - draft.start.y)
-    }
+  const onPointerUp = (event: PointerEvent<HTMLImageElement>): void => {
+    if (!draft || !preview || event.button !== 0) return
+    const area = toArea(draft.start, getPoint(event) ?? draft.current)
     setDraft(null)
-    if (nextRegion.width < 8 || nextRegion.height < 8) {
+    if (
+      area.width * preview.width < minimumAreaPixels ||
+      area.height * preview.height < minimumAreaPixels
+    ) {
       setError('Select a larger area.')
-      setIsSelecting(true)
-      return
-    }
-    if (nextRegion.width * nextRegion.height > preview.width * preview.height * 0.8) {
-      setError('Select a smaller area around the text, not the full screen.')
-      setIsSelecting(true)
       return
     }
     setError('')
-    try {
-      await window.api.setScreenRegion(nextRegion)
-      setRegion(nextRegion)
-      setIsSelecting(true)
-    } catch {
-      setError('Unable to save the selected screen area.')
-    }
+    saveAreas([...areas, area])
   }
 
+  const onContextMenu = (event: MouseEvent<HTMLImageElement>): void => event.preventDefault()
+
   const startScanning = async (): Promise<void> => {
-    if (!region) return
+    if (areas.length === 0) return
     setError('')
     setResult(null)
     setIsScanning(true)
     try {
-      await window.api.startScreenScan(region)
+      await window.api.startScreenScan()
     } catch {
       setIsScanning(false)
       setError('Screen scan failed to start.')
@@ -143,27 +217,42 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
     setIsScanning(false)
   }
 
-  const selection = draft
-    ? {
-        x: Math.min(draft.start.x, draft.current.x),
-        y: Math.min(draft.start.y, draft.current.y),
-        width: Math.abs(draft.current.x - draft.start.x),
-        height: Math.abs(draft.current.y - draft.start.y)
-      }
-    : region
+  const draftArea = draft ? toArea(draft.start, draft.current) : null
+  const canEdit = isSelecting && !isScanning
 
   return (
     <section className="screen-ocr-view" aria-labelledby="screen-ocr-title" hidden={!active}>
       <h1 id="screen-ocr-title">Screen OCR</h1>
       <div className="ocr-actions">
-        <button
-          className="button button-secondary"
-          disabled={isScanning}
-          onClick={() => void selectScreenArea()}
-          type="button"
-        >
-          Select area
-        </button>
+        <label className="monitor-select">
+          <span>Monitor</span>
+          <select
+            disabled={isScanning || displays.length === 0}
+            onChange={(event) => void changeDisplay(Number(event.target.value))}
+            value={displayId ?? ''}
+          >
+            {displays.map((display) => (
+              <option key={display.id} value={display.id}>
+                {display.label} ({display.width}×{display.height}
+                {display.isPrimary ? ', primary' : ''})
+              </option>
+            ))}
+          </select>
+        </label>
+        {isSelecting ? (
+          <button className="button button-secondary" onClick={finishSelecting} type="button">
+            Save and Close
+          </button>
+        ) : (
+          <button
+            className="button button-tertiary"
+            disabled={isScanning}
+            onClick={() => void startSelecting()}
+            type="button"
+          >
+            Select areas
+          </button>
+        )}
         {isScanning ? (
           <button
             className="button button-secondary"
@@ -175,7 +264,7 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
         ) : (
           <button
             className="button button-primary"
-            disabled={!region}
+            disabled={areas.length === 0}
             onClick={() => void startScanning()}
             type="button"
           >
@@ -183,33 +272,66 @@ function ScreenOcr({ active }: ScreenOcrProps): React.JSX.Element {
           </button>
         )}
       </div>
+      <p className="ocr-hint">
+        {areas.length === 0
+          ? 'No areas selected for this monitor.'
+          : `${areas.length} area${areas.length === 1 ? '' : 's'} selected on this monitor.`}
+      </p>
 
       {preview && (
         <div className="ocr-preview-wrap">
           <div className="screen-preview">
             <img
               ref={imageRef}
-              alt="Primary screen preview"
-              className={isSelecting ? 'screen-preview-image is-selecting' : 'screen-preview-image'}
+              alt="Screen preview"
+              className={canEdit ? 'screen-preview-image is-selecting' : 'screen-preview-image'}
               draggable={false}
+              onContextMenu={onContextMenu}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               src={preview.dataUrl}
             />
-            {selection && (
+            {areas.map((area, index) => (
               <span
                 className="screen-selection"
+                key={`${index}-${area.x}-${area.y}`}
                 style={{
-                  left: `${(selection.x / preview.width) * 100}%`,
-                  top: `${(selection.y / preview.height) * 100}%`,
-                  width: `${(selection.width / preview.width) * 100}%`,
-                  height: `${(selection.height / preview.height) * 100}%`
+                  left: `${area.x * 100}%`,
+                  top: `${area.y * 100}%`,
+                  width: `${area.width * 100}%`,
+                  height: `${area.height * 100}%`
+                }}
+              />
+            ))}
+            {draftArea && (
+              <span
+                className="screen-selection is-draft"
+                style={{
+                  left: `${draftArea.x * 100}%`,
+                  top: `${draftArea.y * 100}%`,
+                  width: `${draftArea.width * 100}%`,
+                  height: `${draftArea.height * 100}%`
                 }}
               />
             )}
+            {canEdit && (
+              <div className="selection-guide">
+                <strong>Controls</strong>
+                <ul>
+                  <li>
+                    <kbd>Left Click</kbd> + drag to create selection areas
+                  </li>
+                  <li>
+                    <kbd>Ctrl</kbd> + <kbd>A</kbd> to select the full screen
+                  </li>
+                  <li>
+                    <kbd>Right Click</kbd> an area to delete it
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
-          {isSelecting && <p className="ocr-hint">Drag over the text area.</p>}
         </div>
       )}
 

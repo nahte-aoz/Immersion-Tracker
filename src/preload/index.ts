@@ -2,12 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AudioAppList,
+  GeneralSettings,
   AudioSettings,
   OcrLanguageCode,
   OcrLanguageOption,
   ScreenOcrResult,
+  ScreenArea,
+  ScreenDisplayInfo,
+  ScreenOcrSettings,
   ScreenPreview,
-  ScreenRegion,
   SpeechLanguageResult,
   TimerStatistics
 } from './types'
@@ -26,17 +29,31 @@ const api = {
   stopTimer: (): Promise<void> => ipcRenderer.invoke('timer:stop'),
   getSeconds: (): Promise<number> => ipcRenderer.invoke('timer:get'),
   isTimerRunning: (): Promise<boolean> => ipcRenderer.invoke('timer:is-running'),
-  getTimerStatistics: (): Promise<TimerStatistics> => ipcRenderer.invoke('stats:get'),
+  getTimerStatistics: (language?: string): Promise<TimerStatistics> =>
+    ipcRenderer.invoke('stats:get', language),
+  deleteSession: (id: number): Promise<void> => ipcRenderer.invoke('sessions:delete', id),
+  getActiveProfile: (): Promise<string> => ipcRenderer.invoke('profile:get'),
+  setActiveProfile: (profile: string): Promise<string> =>
+    ipcRenderer.invoke('profile:set', profile),
+  onProfileChanged: subscribe<[string]>('profile:changed'),
   getOcrLanguages: (): Promise<OcrLanguageCode[]> => ipcRenderer.invoke('ocr-languages:get'),
   getSupportedOcrLanguages: (): Promise<OcrLanguageOption[]> =>
     ipcRenderer.invoke('ocr-languages:options'),
   setOcrLanguages: (languages: OcrLanguageCode[]): Promise<OcrLanguageCode[]> =>
     ipcRenderer.invoke('ocr-languages:set', languages),
-  getScreenPreview: (): Promise<ScreenPreview> => ipcRenderer.invoke('screen:preview'),
-  setScreenRegion: (region: ScreenRegion | null): Promise<void> =>
-    ipcRenderer.invoke('screen:region:set', region),
-  startScreenScan: (region: ScreenRegion): Promise<void> =>
-    ipcRenderer.invoke('screen:scan:start', region),
+  getScreenDisplays: (): Promise<ScreenDisplayInfo[]> => ipcRenderer.invoke('screen:displays'),
+  getScreenOcrSettings: (): Promise<ScreenOcrSettings> => ipcRenderer.invoke('screen:settings:get'),
+  setScreenDisplay: (displayId: number | null): Promise<ScreenOcrSettings> =>
+    ipcRenderer.invoke('screen:display:set', displayId),
+  setScreenAreas: (displayId: number, areas: ScreenArea[]): Promise<ScreenOcrSettings> =>
+    ipcRenderer.invoke('screen:areas:set', displayId, areas),
+  getScreenPreview: (displayId: number | null): Promise<ScreenPreview> =>
+    ipcRenderer.invoke('screen:preview', displayId),
+  startScreenScan: (): Promise<void> => ipcRenderer.invoke('screen:scan:start'),
+  isScreenScanRunning: (): Promise<boolean> => ipcRenderer.invoke('screen:scan:is-running'),
+  getGeneralSettings: (): Promise<GeneralSettings> => ipcRenderer.invoke('general:get'),
+  setGeneralSettings: (changes: Partial<GeneralSettings>): Promise<GeneralSettings> =>
+    ipcRenderer.invoke('general:set', changes),
   stopScreenScan: (): Promise<void> => ipcRenderer.invoke('screen:scan:stop'),
   onScreenScanResult: (callback: (result: ScreenOcrResult) => void) => {
     const listener = (_event: unknown, result: ScreenOcrResult): void => callback(result)

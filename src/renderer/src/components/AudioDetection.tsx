@@ -155,11 +155,6 @@ function AudioDetection({ active }: AudioDetectionProps): React.JSX.Element {
         )}
       </div>
 
-      <p className="ocr-hint">
-        Listens to the sound your computer is playing, not the microphone. Everything is analysed on
-        this device and no audio is saved or uploaded.
-      </p>
-
       {isListening && (
         <>
           <div

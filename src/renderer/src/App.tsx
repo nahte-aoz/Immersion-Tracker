@@ -3,6 +3,7 @@ import Statistics from './components/Statistics'
 import ScreenOcr from './components/ScreenOcr'
 import AudioDetection from './components/AudioDetection'
 import Settings from './components/Settings'
+import ProfileSelect from './components/ProfileSelect'
 import { useEffect, useState } from 'react'
 
 type Tab = 'study' | 'statistics' | 'screen-ocr' | 'audio' | 'settings'
@@ -37,7 +38,9 @@ function App(): React.JSX.Element {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"></div>
+        <div className="brand">
+          <ProfileSelect refreshKey={activeTab} />
+        </div>
         <nav className="primary-nav" aria-label="Main navigation">
           <button
             className={activeTab === 'study' ? 'nav-tab is-active' : 'nav-tab'}

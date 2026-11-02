@@ -6,13 +6,38 @@ export interface TimerStatistics {
   daily: Array<{ date: string; seconds: number; sessions: number }>
   calendar: Array<{ date: string; seconds: number; sessions: number }>
   recent: Array<{ id: number; seconds: number; stoppedAt: string | null }>
+  // Seconds studied in each hour (0-23) of today.
+  hourly: number[]
+  // Time per language across all sessions, largest first.
+  byLanguage: Array<{ language: string; seconds: number }>
 }
 
-export interface ScreenRegion {
+// Profile ids: 'all' tracks every language selected in Settings, otherwise one language code.
+export const ALL_PROFILE = 'all'
+// Language bucket for time that couldn't be attributed to a language (e.g. manual time).
+export const UNKNOWN_LANGUAGE = 'unknown'
+
+// A selected rectangle as fractions (0..1) of a display, so it survives resolution changes.
+export interface ScreenArea {
   x: number
   y: number
   width: number
   height: number
+}
+
+export interface ScreenDisplayInfo {
+  id: number
+  label: string
+  width: number
+  height: number
+  isPrimary: boolean
+}
+
+export interface ScreenOcrSettings {
+  // Null means the primary display.
+  displayId: number | null
+  // Selected areas per display id.
+  areas: Record<string, ScreenArea[]>
 }
 
 export interface ScreenPreview {
@@ -70,4 +95,11 @@ export interface AudioAppList {
   // False when Windows is too old for per-application audio capture.
   supported: boolean
   apps: AudioAppInfo[]
+}
+
+export interface GeneralSettings {
+  // Start scanning the screen as soon as the app launches.
+  runOcrOnStart: boolean
+  // Closing or minimizing the window hides it to the system tray.
+  minimizeToTray: boolean
 }

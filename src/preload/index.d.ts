@@ -1,12 +1,15 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AudioAppList,
+  GeneralSettings,
   AudioSettings,
   OcrLanguageCode,
   OcrLanguageOption,
   ScreenOcrResult,
+  ScreenArea,
+  ScreenDisplayInfo,
+  ScreenOcrSettings,
   ScreenPreview,
-  ScreenRegion,
   SpeechLanguageResult,
   TimerStatistics
 } from './types'
@@ -16,13 +19,23 @@ export interface customAPI {
   stopTimer: () => Promise<void>
   getSeconds: () => Promise<number>
   isTimerRunning: () => Promise<boolean>
-  getTimerStatistics: () => Promise<TimerStatistics>
+  getTimerStatistics: (language?: string) => Promise<TimerStatistics>
+  deleteSession: (id: number) => Promise<void>
+  getActiveProfile: () => Promise<string>
+  setActiveProfile: (profile: string) => Promise<string>
+  onProfileChanged: (callback: (profile: string) => void) => () => void
   getOcrLanguages: () => Promise<OcrLanguageCode[]>
   getSupportedOcrLanguages: () => Promise<OcrLanguageOption[]>
   setOcrLanguages: (languages: OcrLanguageCode[]) => Promise<OcrLanguageCode[]>
-  getScreenPreview: () => Promise<ScreenPreview>
-  setScreenRegion: (region: ScreenRegion | null) => Promise<void>
-  startScreenScan: (region: ScreenRegion) => Promise<void>
+  getScreenDisplays: () => Promise<ScreenDisplayInfo[]>
+  getScreenOcrSettings: () => Promise<ScreenOcrSettings>
+  setScreenDisplay: (displayId: number | null) => Promise<ScreenOcrSettings>
+  setScreenAreas: (displayId: number, areas: ScreenArea[]) => Promise<ScreenOcrSettings>
+  getScreenPreview: (displayId: number | null) => Promise<ScreenPreview>
+  startScreenScan: () => Promise<void>
+  isScreenScanRunning: () => Promise<boolean>
+  getGeneralSettings: () => Promise<GeneralSettings>
+  setGeneralSettings: (changes: Partial<GeneralSettings>) => Promise<GeneralSettings>
   stopScreenScan: () => Promise<void>
   onScreenScanResult: (callback: (result: ScreenOcrResult) => void) => () => void
   onScreenScanError: (callback: (message: string) => void) => () => void

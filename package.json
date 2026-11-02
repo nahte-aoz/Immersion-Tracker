@@ -1,10 +1,15 @@
 {
-  "name": "temp-electron-vite",
+  "name": "immersion-tracker",
+  "productName": "Immersion Tracker",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "Automatically tracks language immersion time from on-screen text (OCR) and spoken audio.",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "nahte-aoz",
+  "homepage": "https://github.com/nahte-aoz/Immersion-Tracker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nahte-aoz/Immersion-Tracker.git"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -19,7 +24,7 @@
     "fetch:speech-models": "node scripts/fetch-speech-models.mjs",
     "build:audio-sessions": "node scripts/build-audio-sessions.mjs",
     "build:unpack": "npm run fetch:owocr && npm run fetch:speech-models && npm run build:audio-sessions && npm run build && electron-builder --dir",
-    "build:win": "npm run fetch:owocr && npm run fetch:speech-models && npm run build:audio-sessions && npm run build && electron-builder --win",
+    "build:win": "npm run fetch:owocr && npm run fetch:speech-models && npm run build:audio-sessions && npm run build && electron-builder --win --publish never",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },

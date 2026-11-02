@@ -2,8 +2,14 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { app, desktopCapturer, screen, type NativeImage } from 'electron'
-import type { ScreenOcrResult, ScreenPreview, ScreenRegion } from '../preload/types'
+import { app, desktopCapturer, nativeImage, screen, type Display, type NativeImage } from 'electron'
+import { toDetectorLanguage } from './languages'
+import type {
+  ScreenArea,
+  ScreenDisplayInfo,
+  ScreenOcrResult,
+  ScreenPreview
+} from '../preload/types'
 
 interface FrameSnapshot {
   regionKey: string
@@ -21,6 +27,8 @@ interface RecognizedBlock {
 }
 
 interface FrameRecognition {
+  // The detected language (franc code), when the text counts as a target language.
+  language: string
   result: ScreenOcrResult | null
   targetTextKey: string
 }
@@ -40,7 +48,8 @@ let pendingFrame: CapturedFrame | undefined
 let activeScanId = 0
 let activeResultCallback: ((result: ScreenOcrResult) => void) | undefined
 let activeErrorCallback: ((message: string) => void) | undefined
-let activeActivityCallback: ((active: boolean) => void) | undefined
+let activeActivityCallback: ((active: boolean, language?: string) => void) | undefined
+let activeTargetLanguages: string[] = []
 let scanTimer: NodeJS.Timeout | undefined
 let isScanActive = false
 
@@ -216,13 +225,59 @@ const hasMeaningfulChange = (regionKey: string, pixels: Buffer): boolean => {
   return changedMeaningfully
 }
 
-const capturePrimaryScreen = async (): Promise<NativeImage> => {
-  const display = screen.getPrimaryDisplay()
+export interface ScreenOcrTarget {
+  displayId: number | null
+  // Fractions (0..1) of the display, so they survive resolution and scaling changes.
+  areas: ScreenArea[]
+}
+
+interface PixelRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface BitmapLayer {
+  width: number
+  height: number
+  // BGRA, tightly packed.
+  pixels: Buffer
+}
+
+const previewMaxWidth = 1600
+// Gap between separate (non-overlapping) areas when they are stacked into one image.
+const areaGapPixels = 16
+const opaqueBlack = 0xff000000
+
+const resolveDisplay = (displayId: number | null): Display =>
+  screen.getAllDisplays().find((display) => display.id === displayId) ?? screen.getPrimaryDisplay()
+
+export const getScreenDisplays = (): ScreenDisplayInfo[] => {
+  const primaryId = screen.getPrimaryDisplay().id
+  return screen.getAllDisplays().map((display, index) => ({
+    id: display.id,
+    label: `Display ${index + 1}${display.label ? ` - ${display.label}` : ''}`,
+    width: Math.round(display.size.width * display.scaleFactor),
+    height: Math.round(display.size.height * display.scaleFactor),
+    isPrimary: display.id === primaryId
+  }))
+}
+
+// Captures one monitor at its physical resolution (the capture API otherwise returns it scaled
+// down to DIPs, which hurts OCR on scaled displays).
+const captureDisplay = async (displayId: number | null): Promise<NativeImage> => {
+  const display = resolveDisplay(displayId)
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: { width: display.size.width, height: display.size.height }
+    thumbnailSize: {
+      width: Math.round(display.size.width * display.scaleFactor),
+      height: Math.round(display.size.height * display.scaleFactor)
+    }
   })
-  const source = sources.find((item) => item.display_id === String(display.id)) ?? sources[0]
+  const index = screen.getAllDisplays().findIndex((item) => item.id === display.id)
+  const source =
+    sources.find((item) => item.display_id === String(display.id)) ?? sources[index] ?? sources[0]
 
   if (!source || source.thumbnail.isEmpty()) {
     throw new Error('No screen capture source is available.')
@@ -231,34 +286,146 @@ const capturePrimaryScreen = async (): Promise<NativeImage> => {
   return source.thumbnail
 }
 
-export const getScreenPreview = async (): Promise<ScreenPreview> => {
-  const thumbnail = await capturePrimaryScreen()
-  const { width, height } = thumbnail.getSize()
-  return { dataUrl: thumbnail.toDataURL(), width, height }
+export const getScreenPreview = async (displayId: number | null): Promise<ScreenPreview> => {
+  const image = await captureDisplay(displayId)
+  const scaled =
+    image.getSize().width > previewMaxWidth
+      ? image.resize({ width: previewMaxWidth, quality: 'good' })
+      : image
+  const size = scaled.getSize()
+  return {
+    dataUrl: `data:image/jpeg;base64,${scaled.toJPEG(85).toString('base64')}`,
+    width: size.width,
+    height: size.height
+  }
 }
 
-const captureChangedRegion = async (region: ScreenRegion): Promise<CapturedFrame | null> => {
-  const thumbnail = await capturePrimaryScreen()
-  const size = thumbnail.getSize()
-  const x = Math.max(0, Math.min(Math.floor(region.x), size.width - 1))
-  const y = Math.max(0, Math.min(Math.floor(region.y), size.height - 1))
-  const width = Math.min(Math.floor(region.width), size.width - x)
-  const height = Math.min(Math.floor(region.height), size.height - y)
+const rectsOverlap = (first: PixelRect, second: PixelRect): boolean =>
+  first.x < second.x + second.width &&
+  second.x < first.x + first.width &&
+  first.y < second.y + second.height &&
+  second.y < first.y + first.height
 
-  if (!Number.isFinite(x + y + width + height) || width < 4 || height < 4) {
-    throw new Error('Select a larger screen region.')
+const boundsOf = (rects: PixelRect[]): PixelRect => {
+  const left = Math.min(...rects.map((rect) => rect.x))
+  const top = Math.min(...rects.map((rect) => rect.y))
+  const right = Math.max(...rects.map((rect) => rect.x + rect.width))
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height))
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+// Groups rectangles that overlap (directly or through a chain of others), in reading order.
+const clusterOverlappingRects = (rects: PixelRect[]): PixelRect[][] => {
+  const parent = rects.map((_, index) => index)
+  const find = (index: number): number => {
+    while (parent[index] !== index) {
+      parent[index] = parent[parent[index]]
+      index = parent[index]
+    }
+    return index
+  }
+  for (let first = 0; first < rects.length; first++) {
+    for (let second = first + 1; second < rects.length; second++) {
+      if (rectsOverlap(rects[first], rects[second])) parent[find(second)] = find(first)
+    }
   }
 
-  const croppedImage = thumbnail.crop({ x, y, width, height })
-  const frameKey = `${x}:${y}:${width}:${height}`
-  const pixels = croppedImage.toBitmap()
-  if (!hasMeaningfulChange(frameKey, pixels)) return null
+  const clusters = new Map<number, PixelRect[]>()
+  rects.forEach((rect, index) => {
+    const root = find(index)
+    clusters.set(root, [...(clusters.get(root) ?? []), rect])
+  })
+  return [...clusters.values()].sort((first, second) => {
+    const a = boundsOf(first)
+    const b = boundsOf(second)
+    return a.y - b.y || a.x - b.x
+  })
+}
 
-  const imageKey = createHash('sha256').update(pixels).digest('hex')
+// One image per cluster of overlapping areas: only the selected pixels are kept (everything else
+// is black), so text inside an overlap appears - and is read - once.
+const buildClusterLayer = (image: NativeImage, cluster: PixelRect[]): BitmapLayer => {
+  const bounds = boundsOf(cluster)
+  const source = image.crop(bounds).toBitmap()
+  if (cluster.length === 1) return { width: bounds.width, height: bounds.height, pixels: source }
+
+  const pixels = Buffer.alloc(bounds.width * bounds.height * 4)
+  new Uint32Array(pixels.buffer, pixels.byteOffset, bounds.width * bounds.height).fill(opaqueBlack)
+  for (const rect of cluster) {
+    for (let row = 0; row < rect.height; row++) {
+      const start = ((rect.y - bounds.y + row) * bounds.width + (rect.x - bounds.x)) * 4
+      source.copy(pixels, start, start, start + rect.width * 4)
+    }
+  }
+  return { width: bounds.width, height: bounds.height, pixels }
+}
+
+// Stacks the clusters top to bottom into a single image, so one OCR pass covers every area.
+const stackLayers = (layers: BitmapLayer[]): BitmapLayer => {
+  if (layers.length === 1) return layers[0]
+
+  const width = Math.max(...layers.map((layer) => layer.width))
+  const height =
+    layers.reduce((total, layer) => total + layer.height, 0) + areaGapPixels * (layers.length - 1)
+  const pixels = Buffer.alloc(width * height * 4)
+  new Uint32Array(pixels.buffer, pixels.byteOffset, width * height).fill(opaqueBlack)
+
+  let top = 0
+  for (const layer of layers) {
+    for (let row = 0; row < layer.height; row++) {
+      layer.pixels.copy(
+        pixels,
+        (top + row) * width * 4,
+        row * layer.width * 4,
+        (row + 1) * layer.width * 4
+      )
+    }
+    top += layer.height + areaGapPixels
+  }
+  return { width, height, pixels }
+}
+
+const toPixelRects = (areas: ScreenArea[], size: { width: number; height: number }): PixelRect[] =>
+  areas
+    .map((area) => {
+      const x = Math.max(0, Math.min(Math.round(area.x * size.width), size.width - 1))
+      const y = Math.max(0, Math.min(Math.round(area.y * size.height), size.height - 1))
+      return {
+        x,
+        y,
+        width: Math.min(Math.round(area.width * size.width), size.width - x),
+        height: Math.min(Math.round(area.height * size.height), size.height - y)
+      }
+    })
+    .filter(
+      (rect) =>
+        Number.isFinite(rect.x + rect.y + rect.width + rect.height) &&
+        rect.width >= 4 &&
+        rect.height >= 4
+    )
+
+const captureChangedAreas = async (target: ScreenOcrTarget): Promise<CapturedFrame | null> => {
+  const image = await captureDisplay(target.displayId)
+  const size = image.getSize()
+  const rects = toPixelRects(target.areas, size)
+  if (rects.length === 0) throw new Error('Select at least one screen area.')
+
+  const layer = stackLayers(
+    clusterOverlappingRects(rects).map((cluster) => buildClusterLayer(image, cluster))
+  )
+  const frameKey = `${resolveDisplay(target.displayId).id}:${size.width}x${size.height}:${rects
+    .map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`)
+    .join(';')}`
+  if (!hasMeaningfulChange(frameKey, layer.pixels)) return null
+
+  const imageKey = createHash('sha256').update(layer.pixels).digest('hex')
   if (imageKey === lastOcrImageKey) return null
   lastOcrImageKey = imageKey
 
-  return { regionKey: frameKey, image: croppedImage.toPNG() }
+  const png = nativeImage
+    .createFromBitmap(layer.pixels, { width: layer.width, height: layer.height })
+    .toPNG()
+  return { regionKey: frameKey, image: png }
 }
 
 const processRecognizedText = async (
@@ -279,14 +446,12 @@ const processRecognizedText = async (
     .map((text) => ({ text, letterCount: (text.match(/\p{L}/gu) ?? []).length }))
 
   if (recognizedBlocks.length === 0) {
-    return { result: null, targetTextKey: '' }
+    return { result: null, targetTextKey: '', language: '' }
   }
 
   languageDetectorPromise ??= import('franc-min')
   const { franc } = await languageDetectorPromise
-  const detectorLanguages = languages.map((language) =>
-    language === 'chi_sim' || language === 'chi_tra' ? 'cmn' : language
-  )
+  const detectorLanguages = languages.map(toDetectorLanguage)
   const classifiedBlocks = recognizedBlocks.map((block) => ({
     ...block,
     language: detectBlockLanguage(block, detectorLanguages, franc)
@@ -300,8 +465,14 @@ const processRecognizedText = async (
       )
     }
   }
+  // Only the profile's languages count; other languages are still classified so that, for
+  // example, English text isn't mistaken for the one selected language.
+  const allowed = new Set(activeTargetLanguages.map(toDetectorLanguage))
   const language =
-    [...languageTotals.entries()].sort((first, second) => second[1] - first[1])[0]?.[0] ?? 'und'
+    [...languageTotals.entries()]
+      .filter(([candidate]) => allowed.has(candidate))
+      .sort((first, second) => second[1] - first[1])[0]?.[0] ?? 'und'
+  if (language === 'und') return { result: null, targetTextKey: '', language: '' }
   const selectedBlocks =
     language === 'und'
       ? classifiedBlocks
@@ -312,7 +483,7 @@ const processRecognizedText = async (
     .replace(/\s+/g, ' ')
     .trim()
   if (!text) {
-    return { result: null, targetTextKey: '' }
+    return { result: null, targetTextKey: '', language: '' }
   }
 
   // OwOCR doesn't report a confidence in text mode; the field is kept for the renderer type.
@@ -327,14 +498,14 @@ const processRecognizedText = async (
     const sharedWords = [...normalizedWords].filter((word) => lastLoggedWords.has(word)).length
     const unionSize = new Set([...normalizedWords, ...lastLoggedWords]).size
     if (sharedWords / Math.max(1, unionSize) >= 0.75) {
-      return { result: null, targetTextKey }
+      return { result: null, targetTextKey, language }
     }
   }
 
   lastLoggedRegionKey = frame.regionKey
   lastLoggedWords = normalizedWords
   console.info('[screen-ocr]', result)
-  return { result, targetTextKey }
+  return { result, targetTextKey, language }
 }
 
 const detectBlockLanguage = (
@@ -427,7 +598,7 @@ const handleOwocrMessage = async (
   try {
     const recognition = await processRecognizedText(frame, data, languages)
     if (!isScanActive || scanId !== activeScanId) return
-    activeActivityCallback?.(recognition.targetTextKey !== '')
+    activeActivityCallback?.(recognition.targetTextKey !== '', recognition.language)
     if (recognition.result) activeResultCallback?.(recognition.result)
   } catch (error) {
     failScan(scanId, error instanceof Error ? error.message : 'Screen scan failed.')
@@ -437,11 +608,12 @@ const handleOwocrMessage = async (
 }
 
 export const startScreenOcr = (
-  region: ScreenRegion,
+  target: ScreenOcrTarget,
   languages: string[],
+  targetLanguages: string[],
   onResult: (result: ScreenOcrResult) => void,
   onError: (message: string) => void,
-  onActivity: (active: boolean) => void
+  onActivity: (active: boolean, language?: string) => void
 ): void => {
   stopScreenOcr()
   const scanId = activeScanId
@@ -453,14 +625,15 @@ export const startScreenOcr = (
   activeResultCallback = onResult
   activeErrorCallback = onError
   activeActivityCallback = onActivity
+  activeTargetLanguages = targetLanguages
   isScanActive = true
-  console.info('[screen-ocr] live scan started', region)
+  console.info('[screen-ocr] live scan started', target)
 
   const capture = async (): Promise<void> => {
     if (!isScanActive || scanId !== activeScanId) return
 
     try {
-      const frame = await captureChangedRegion(region)
+      const frame = await captureChangedAreas(target)
       if (frame && isScanActive && scanId === activeScanId) {
         pendingFrame = frame
         sendNextFrame(scanId)
@@ -475,7 +648,7 @@ export const startScreenOcr = (
     }
   }
 
-  void connectOwocr(languages).then(
+  void connectOwocr(targetLanguages).then(
     (socket) => {
       if (!isScanActive || scanId !== activeScanId) {
         socket.close()

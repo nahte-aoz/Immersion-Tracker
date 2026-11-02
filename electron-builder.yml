@@ -1,5 +1,5 @@
 appId: com.aoz.immersiontracker
-productName: Immerstion Tracker
+productName: Immersion Tracker
 directories:
   buildResources: build
 files:
@@ -26,9 +26,14 @@ extraResources:
     to: speech
   - from: resources/audio-sessions
     to: audio-sessions
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 win:
   executableName: immersion-tracker
 nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
@@ -53,6 +58,3 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
