@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, rename, rm, writeFile, readFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -56,7 +56,8 @@ try {
 
   await rm(targetDir, { recursive: true, force: true })
   await mkdir(dirname(targetDir), { recursive: true })
-  await rename(root, targetDir)
+  // Copy rather than rename: the temp folder can be on a different drive (e.g. on CI runners).
+  await cp(root, targetDir, { recursive: true })
   // OwOCR is GPL-3.0; the release zip doesn't include the license text, so ship it alongside.
   const licenseResponse = await fetch(
     `https://raw.githubusercontent.com/AuroraWright/owocr/${version}/LICENSE`
