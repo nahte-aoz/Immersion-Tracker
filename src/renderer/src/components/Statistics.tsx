@@ -104,7 +104,6 @@ function Statistics(): React.JSX.Element {
   if (error) {
     return (
       <section className="statistics-view" aria-labelledby="statistics-title">
-        <h1 id="statistics-title">Statistics</h1>
         <p className="state-message" role="alert">
           Unable to load statistics.
         </p>
@@ -115,7 +114,6 @@ function Statistics(): React.JSX.Element {
   if (!statistics) {
     return (
       <section className="statistics-view" aria-labelledby="statistics-title">
-        <h1 id="statistics-title">Statistics</h1>
         <p className="state-message" aria-live="polite">
           Loading...
         </p>
@@ -164,7 +162,6 @@ function Statistics(): React.JSX.Element {
   return (
     <section className="statistics-view" aria-labelledby="statistics-title">
       <div className="statistics-heading">
-        <h1 id="statistics-title">Statistics</h1>
         <div className="statistics-controls">
           <label className="profile-select">
             <span>Language</span>

@@ -88,16 +88,6 @@ function Settings(): React.JSX.Element {
       <div className="general-settings">
         <label className="toggle-row">
           <input
-            checked={general?.runOcrOnStart ?? false}
-            disabled={!general}
-            onChange={(event) => void saveGeneral({ runOcrOnStart: event.target.checked })}
-            role="switch"
-            type="checkbox"
-          />
-          <span>Run OCR on start</span>
-        </label>
-        <label className="toggle-row">
-          <input
             checked={general?.minimizeToTray ?? false}
             disabled={!general}
             onChange={(event) => void saveGeneral({ minimizeToTray: event.target.checked })}
@@ -105,6 +95,16 @@ function Settings(): React.JSX.Element {
             type="checkbox"
           />
           <span>Minimize to tray</span>
+        </label>
+                <label className="toggle-row">
+          <input
+            checked={general?.runOcrOnStart ?? false}
+            disabled={!general}
+            onChange={(event) => void saveGeneral({ runOcrOnStart: event.target.checked })}
+            role="switch"
+            type="checkbox"
+          />
+          <span>Run OCR on start</span>
         </label>
         <div className="tooltip-host">
           <label className="toggle-row">

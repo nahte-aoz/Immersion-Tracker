@@ -79,10 +79,12 @@ const ensureTray = (): void => {
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
+    name: 'main',
     width: 1320,
     height: 900,
     minWidth: 850,
     minHeight: 620,
+    windowStatePersistence: true,
     icon: join(__dirname, '../../resources/icon.png'),
     center: true,
     show: false,
