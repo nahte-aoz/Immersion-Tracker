@@ -7,7 +7,9 @@ import {
   Menu,
   nativeImage,
   session,
-  Tray
+  Tray,
+  type Rectangle,
+  screen
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -48,9 +50,37 @@ import {
 } from './speechLanguage'
 import { ALL_PROFILE, UNKNOWN_LANGUAGE } from '../preload/types'
 import type { AudioAppList, AudioSettings, GeneralSettings, ScreenArea } from '../preload/types'
+import Store from 'electron-store'
 
 let isQuitting = false
 let tray: Tray | undefined
+
+interface StoreSchema {
+  windowBounds?: Rectangle;
+  isMaximized?: boolean;
+}
+ 
+const store = new Store<StoreSchema>();
+ 
+const DEFAULT_WIDTH = 1320;
+const DEFAULT_HEIGHT = 900;
+ 
+/** True if any part of `bounds` overlaps a connected display's work area. */
+function isVisibleOnSomeDisplay(bounds: Rectangle): boolean {
+  return screen.getAllDisplays().some(({ workArea: a }) => (
+    bounds.x < a.x + a.width &&
+    bounds.x + bounds.width > a.x &&
+    bounds.y < a.y + a.height &&
+    bounds.y + bounds.height > a.y
+  ));
+}
+ 
+function logBounds(label: string, win: BrowserWindow): void {
+  if (!process.env.DEBUG_BOUNDS) return;
+  const scales = screen.getAllDisplays().map((d) => d.scaleFactor);
+  console.log(label, win.getNormalBounds(), 'scaleFactors:', scales);
+}
+
 
 const showMainWindow = (): void => {
   const window = BrowserWindow.getAllWindows()[0]
@@ -80,11 +110,11 @@ function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     name: 'main',
-    width: 1320,
-    height: 900,
+    width: DEFAULT_WIDTH,
+    height: DEFAULT_HEIGHT,
     minWidth: 850,
     minHeight: 620,
-    windowStatePersistence: true,
+    windowStatePersistence: false,
     icon: join(__dirname, '../../resources/icon.png'),
     center: true,
     show: false,
@@ -98,9 +128,23 @@ function createWindow(): void {
     }
   })
 
+  const saved = store.get('windowBounds');
+  if (saved && isVisibleOnSomeDisplay(saved)) {
+    mainWindow.setPosition(saved.x, saved.y); // land on the saved display first...
+    mainWindow.setBounds(saved); // ...so the size is applied at that display's DPI
+  }
+  if (store.get('isMaximized')) mainWindow.maximize();
+ 
+  logBounds('restored', mainWindow);
+
   // "Minimize to tray": closing or minimizing the window hides it to the system tray, so the timer, OCR and
   // audio keep running. Quit from the tray menu.
   mainWindow.on('close', (event) => {
+    if (mainWindow.isMinimized()) return;
+    store.set('windowBounds', mainWindow.getNormalBounds()); // ignores maximized/fullscreen state
+    store.set('isMaximized', mainWindow.isMaximized());
+    logBounds('saved', mainWindow);
+
     if (!isQuitting && getGeneralSettings().minimizeToTray) {
       event.preventDefault()
       mainWindow.hide()
@@ -110,6 +154,8 @@ function createWindow(): void {
 
   // The minimize button goes to the tray too.
   mainWindow.on('minimize', () => {
+    if (!mainWindow.isMinimized()) store.set('windowBounds', mainWindow.getNormalBounds());
+    
     if (getGeneralSettings().minimizeToTray) {
       mainWindow.hide()
       ensureTray()
