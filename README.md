@@ -17,7 +17,7 @@
 
 ---
 
-Immersion Tracker runs next to your games, videos, and anime and logs study time for you. It watches the screen for text and listens to the sound your computer plays, and when it recognizes the language you are studying, the timer runs. 
+Immersion Tracker runs next to your games, videos, and anime and logs study time for you. It watches the screen for text and listens to the sound your computer plays, and when it recognizes the language you are studying, a timer automatically tracks time spent studying for you. 
 
 ![Statistics](docs/images/statistics.png)
 
