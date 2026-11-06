@@ -296,7 +296,13 @@ function Statistics(): React.JSX.Element {
                   <button
                     aria-label="Delete session"
                     className="session-delete-button"
-                    onClick={() => setConfirmingId(confirmingId === session.id ? null : session.id)}
+                    onClick={(event) => {
+                      if (event.ctrlKey) {
+                        void deleteSession(session.id)
+                      } else {
+                        setConfirmingId(confirmingId === session.id ? null : session.id)
+                      }
+                    }}
                     type="button"
                   >
                     ✕
@@ -304,6 +310,7 @@ function Statistics(): React.JSX.Element {
                   {confirmingId === session.id && (
                     <div className="session-confirm" role="alertdialog">
                       <p>Are you sure? This cannot be undone.</p>
+                      <p>(Ctrl+Click to skip this dialogue.)</p>
                       <div className="session-confirm-actions">
                         <button
                           className="session-confirm-delete"

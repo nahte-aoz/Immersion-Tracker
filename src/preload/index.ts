@@ -27,6 +27,7 @@ const subscribe =
 const api = {
   startTimer: (): Promise<void> => ipcRenderer.invoke('timer:start'),
   stopTimer: (): Promise<void> => ipcRenderer.invoke('timer:stop'),
+  resetTimer: (): Promise<void> => ipcRenderer.invoke('timer:reset'),
   getSeconds: (): Promise<number> => ipcRenderer.invoke('timer:get'),
   isTimerRunning: (): Promise<boolean> => ipcRenderer.invoke('timer:is-running'),
   getTimerStatistics: (language?: string): Promise<TimerStatistics> =>

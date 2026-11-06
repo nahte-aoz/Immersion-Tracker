@@ -32,7 +32,7 @@ let probeStartedAt = 0
 const workerStartupTimeoutMs = 60000
 // Capture delivers (silent) frames continuously, so a long gap means capture died.
 const frameStallTimeoutMs = 10000
-const probeTimeoutMs = 30000
+const probeTimeoutMs = 15000
 const appPollIntervalMs = 3000
 const maxAppListFailures = 3
 const watchdogIntervalMs = 2000

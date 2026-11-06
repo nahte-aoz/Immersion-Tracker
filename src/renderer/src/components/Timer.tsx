@@ -7,7 +7,7 @@ const Timer: React.FC = () => {
     window.api.getSeconds().then(setSeconds)
     return window.api.onTick(setSeconds)
   }, [])
-
+  
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const remainingSeconds = seconds % 60

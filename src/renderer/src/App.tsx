@@ -27,12 +27,30 @@ function App(): React.JSX.Element {
     return unsubscribe
   }, [])
 
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    const fetchSeconds = async () => {
+      const time = await getSeconds()
+      setSeconds(time)
+    }
+    fetchSeconds()
+  }, [])
+  
   const startTimer = async (): Promise<void> => {
     await window.api.startTimer()
   }
 
   const stopTimer = async (): Promise<void> => {
     await window.api.stopTimer()
+  }
+
+  const resetTimer = async (): Promise<void> => {
+    await window.api.resetTimer()
+  }
+
+  const getSeconds = async (): Promise<number> => {
+    return await window.api.getSeconds()
   }
 
   return (
@@ -106,6 +124,16 @@ function App(): React.JSX.Element {
                   type="button"
                 >
                   Stop and save
+                </button>
+              </div>
+              <div className="timer-stop" style={{ margin: '6px' }}>
+              <button
+                  className="button button-secondary"
+                  disabled={seconds != 0}
+                  onClick={() => void resetTimer()}
+                  type="button"
+                >
+                  Reset
                 </button>
               </div>
             </div>

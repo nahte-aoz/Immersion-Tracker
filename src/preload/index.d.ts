@@ -17,6 +17,7 @@ import type {
 export interface customAPI {
   startTimer: () => Promise<void>
   stopTimer: () => Promise<void>
+  resetTimer: () => Promise<void>
   getSeconds: () => Promise<number>
   isTimerRunning: () => Promise<boolean>
   getTimerStatistics: (language?: string) => Promise<TimerStatistics>

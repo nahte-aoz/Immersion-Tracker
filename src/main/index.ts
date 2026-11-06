@@ -265,7 +265,7 @@ const activeTimerSources = new Set<TimerSource>()
 const screenActivityGracePeriodMs = 20_000
 // Speech is sampled every several seconds and often pauses (music, scene changes), so audio
 // gets a longer grace period than on-screen text.
-const audioActivityGracePeriodMs = 30_000
+const audioActivityGracePeriodMs = 15_000
 let isScreenScanRunning = false
 let isAudioSelected = false
 let isAudioDetectionRunning = false
@@ -515,6 +515,16 @@ const stopTimer = (): void => {
   activeTimerSources.clear()
   stopTimerInterval()
 }
+
+const resetTimer = (): void => {
+  stopTimer()
+  seconds = 0
+  BrowserWindow.getAllWindows().forEach((window) =>
+      window.webContents.send('timer:tick', seconds)
+  )
+}
+
+ipcMain.handle('timer:reset', () => resetTimer())
 
 ipcMain.handle('timer:get', () => {
   return seconds
